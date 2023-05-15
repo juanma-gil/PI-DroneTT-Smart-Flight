@@ -1,18 +1,21 @@
-#include <RMTT_Libs.h>
-#include <WiFi.h>
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
 #include <unistd.h>
+#include <Arduino.h>
+#include <WiFi.h>
+#include <RMTT_Libs.h>
 
-// Create an object
-RMTT_RGB tt_rgb;
 RMTT_Protocol tt_sdk;
+RMTT_RGB tt_rgb;
+const char *ssid = "LCD";
+const char *password = "1cdunc0rd0ba";
+String buffer;
 
-//uint8_t io_map[][2] = {{5,21}}; //Agregar los pines que se quieran usar, [pin_mapeado, pin_a_mappear]
+void receiveDataFromClient(WiFiClient *client);
+
+WiFiServer wifiServer(5001);
+
 void defaultCallback(char *cmd, String res)
 {
 	char msg[100];
@@ -20,38 +23,48 @@ void defaultCallback(char *cmd, String res)
 	Serial.println(String(msg));
 }
 
-// Main program start
 void setup()
 {
 	tt_rgb.Init();
-	tt_rgb.SetRGB(250, 0, 0);
 	Serial.begin(115200);
-	Serial.println("me conecte a la compu");
 	Serial1.begin(1000000, SERIAL_8N1, 23, 18);
-	//pinMode(5, OUTPUT);
-	Serial.println("me conecte al dron");
-	Serial1.println("Hello World");
+
+	delay(1000);
+
+	WiFi.begin(ssid, password);
+
+	while (WiFi.status() != WL_CONNECTED)
+	{
+		delay(1000);
+		Serial.println("Connecting to WiFi..");
+	}
+
+	Serial.println("Connected to the WiFi network");
+	Serial.println(WiFi.localIP());
+
+	wifiServer.begin();
+	tt_sdk.sdkOn(defaultCallback);
 }
+
 void loop()
 {
-	tt_rgb.SetRGB(0, 250, 0);
-	//digitalWrite(5, HIGH);	
-	tt_sdk.startUntilControl(); // Esta funcion ejecuta el comando "command" que inicializa el sdk
-	//digitalWrite(5, LOW);
-	// tt_sdk.sdkOn(defaultCallback);
-	delay(1000);
-	// tt_sdk.motorOn(defaultCallback);
-	// delay(1000);
-	tt_sdk.getBattery(defaultCallback);
-	delay(1000);
-	// tt_sdk.getWiFi(defaultCallback);
-	// tt_sdk.streamOn(defaultCallback);
-	// delay(1000);
-	// tt_sdk.setResolution((char *)"low", defaultCallback);
-	// delay(1000);
-	// tt_sdk.sendCmd((char *)"motoroff", defaultCallback); // Si se quiere enviar alguna función usando los strings
-	// delay(1000);
-	// tt_sdk.streamOff(defaultCallback);
-	tt_rgb.SetRGB(0, 0, 250);
-	delay(1000);
+
+	WiFiClient client = wifiServer.available();
+	if (client)
+		receiveDataFromClient(&client);
+}
+
+void receiveDataFromClient(WiFiClient *client)
+{
+	while (client->connected())
+	{
+		while (client->available() > 0)
+		{
+			buffer = client->readString();
+			Serial.println(buffer);
+			client->write("Recibido por el servidor");
+		}
+	}
+	client->stop();
+	Serial.println("Client disconnected");
 }
