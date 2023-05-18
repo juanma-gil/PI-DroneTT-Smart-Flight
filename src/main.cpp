@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <RMTT_Libs.h>
+#include "../include/models/Coordinate.h"
 
 RMTT_Protocol tt_sdk;
 RMTT_RGB tt_rgb;
