@@ -48,15 +48,15 @@ float Coordinate::getScalar()
 }
 void Coordinate::toString(char *buffer)
 {
-    sprintf(buffer, "(x = %.2f, y = %.2f, z = %.2f, unit = %s)", x, y, z, unit);    
+    sprintf(buffer, "(x = %.2f, y = %.2f, z = %.2f, unit = %s)", x, y, z, unit);
 }
 
-void Coordinate::printPoints(std::list<Coordinate> points)
-{
-	for (Coordinate point : points)
-	{
-		char buffer[50];
-		point.toString(buffer);
-		Serial.println(buffer);
-	}
-}
+// void Coordinate::printPoints(std::queue<Coordinate> points)
+// {
+// 	for (Coordinate point : points)
+// 	{
+// 		char buffer[50];
+// 		point.toString(buffer);
+// 		Serial.println(buffer);
+// 	}
+// }

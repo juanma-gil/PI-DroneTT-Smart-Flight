@@ -21,5 +21,5 @@ public:
     float getZ();
     float getScalar();
     void toString(char *buffer);
-    static void printPoints(std::list<Coordinate> points);
+    // static void printPoints(std::queue<Coordinate> points);
 };
