@@ -1,6 +1,6 @@
 #include "../../include/models/Coordinate.h"
 
-Coordinate::Coordinate(MeasureUnit unit, float x, float y, float z)
+Coordinate::Coordinate(const char *unit, float x, float y, float z)
 {
     this->unit = unit;
     this->x = x;
@@ -10,36 +10,53 @@ Coordinate::Coordinate(MeasureUnit unit, float x, float y, float z)
 
 float Coordinate::getX()
 {
-    return this->x * this->getScalar();
+    return x * getScalar();
 }
 
 float Coordinate::getY()
 {
-    return this->y * this->getScalar();
+    return y * getScalar();
 }
 
 float Coordinate::getZ()
 {
-    return this->z * this->getScalar();
+    return z * getScalar();
 }
 
 float Coordinate::getScalar()
 {
-    switch (this->unit)
+    if (unit == "mm")
     {
-    case MeasureUnit::MM:
         return 1 / 10;
-        break;
-    case MeasureUnit::CM:
-        return 1;
-        break;
-    case MeasureUnit::M:
-        return 1 * 100;
-        break;
-    case MeasureUnit::KM:
-        return 1 * 100 * 1000;
-        break;
-    default:
-        break;
     }
+    else if (unit == "cm")
+    {
+        return 1;
+    }
+    else if (unit == "M")
+    {
+        return 1 * 100;
+    }
+    else if (unit == "Km")
+    {
+        return 1 * 100 * 1000;
+    }
+    else
+    {
+        return 1;
+    }
+}
+void Coordinate::toString(char *buffer)
+{
+    sprintf(buffer, "(x = %.2f, y = %.2f, z = %.2f, unit = %s)", x, y, z, unit);    
+}
+
+void Coordinate::printPoints(std::list<Coordinate> points)
+{
+	for (Coordinate point : points)
+	{
+		char buffer[50];
+		point.toString(buffer);
+		Serial.println(buffer);
+	}
 }
