@@ -7,7 +7,6 @@
 #include <RMTT_Libs.h>
 #include <ArduinoJson.h>
 #include <queue>
-#include "../include/models/Coordinate.h"
 
 #define JSON_BUF_SIZE 1024
 #define PORT 5001
