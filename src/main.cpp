@@ -54,6 +54,7 @@ void setup()
 
 void loop()
 {
+
 	while (route.empty())
 	{
 		client = wifiServer.available();
@@ -63,14 +64,17 @@ void loop()
 		}
 	}
 
-	client.write("Connected to the server");
+	client.write("JSON ok. Starting mission");
 	tt_rgb.SetRGB(200, 0, 255);
 
 	tt_sdk.startUntilControl();
 
+	tt_sdk.getBattery(defaultCallback);
+
+	delay(1000);
 	tt_sdk.takeOff(defaultCallback);
 	Coordinate point = route.front();
-	route.pop();
+
 	char buffer[50];
 	sprintf(buffer, "Going to (%.2f, %.2f, %.2f)", point.getX(), point.getY(), point.getZ());
 	client.write(buffer);
@@ -97,7 +101,7 @@ void receiveDataFromClient()
 		{
 			String json = client.readStringUntil('\n');
 			json.trim(); // Remove the trailing newline character
-			client.write("Recibido por el servidor");
+			client.write("Received JSON");
 			parseJsonAsCoordinate(json.c_str());
 			return;
 		}
@@ -125,7 +129,7 @@ void parseJsonAsCoordinate(const char *jsonBuf)
 		float y = point["y"];
 		float z = point["z"];
 
-		Coordinate coordinate = Coordinate(unit, x, y, z);
+		Coordinate coordinate = Coordinate((char *)unit, x, y, z);
 		route.push(coordinate);
 	}
 }
@@ -138,15 +142,20 @@ void goCallback(char *cmd, String res)
 		sprintf(msg, "cmd: %s, res: %s\n", cmd, res.c_str());
 		client.write(msg);
 	}
-	if (res.indexOf("ok") != -1 && !route.empty())
+
+	if (res.indexOf("ok") != -1 && route.size() > 1)
 	{
-		Coordinate point = route.front();
+		Coordinate origin = route.front();
 		route.pop();
-		tt_sdk.go((int16_t)point.getX(), (int16_t)point.getY(), (int16_t)point.getZ(), 40, goCallback);
+		Coordinate destination = route.front();
+		tt_sdk.moveRealtiveTo(origin, destination, 40, goCallback);
 	}
-	else if (route.empty())
+	else if (route.size() == 1)
 	{
 		tt_sdk.land(defaultCallback);
 		tt_rgb.SetRGB(0, 255, 0);
+		client.write("Finished!");
+		while (1)
+			;
 	}
 }
