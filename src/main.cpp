@@ -6,7 +6,6 @@
 #include <WiFi.h>
 #include <RMTT_Libs.h>
 #include <ArduinoJson.h>
-#include <queue>
 
 #define JSON_BUF_SIZE 1024
 #define PORT 5001
@@ -26,6 +25,7 @@ void defaultCallback(char *cmd, String res);
 void goCallback(char *cmd, String res);
 void receiveDataFromClient();
 void parseJsonAsCoordinate(const char *jsonBuf);
+void insertUnrolledPoints(const char *unit, uint8_t scalar, float plusX, float plusY, float plusZ);
 
 /*-------------- Fuction Implementation --------------*/
 
@@ -129,9 +129,40 @@ void parseJsonAsCoordinate(const char *jsonBuf)
 		float y = point["y"];
 		float z = point["z"];
 
+		Coordinate p1 = route.empty() ? Coordinate((char *)unit, 0.0, 0.0, 0.0) : route.back();
+		Coordinate p2 = Coordinate((char *)unit, x, y, z);
+
+		float xDistance = abs(p1.getX() - p2.getX());
+		float yDistance = abs(p1.getY() - p2.getY());
+		float zDistance = abs(p1.getZ() - p2.getZ());
+
+		if (xDistance >= MAX_DISTANCE || yDistance >= MAX_DISTANCE || zDistance >= MAX_DISTANCE ||
+			xDistance <= MIN_DISTANCE || yDistance <= MIN_DISTANCE || zDistance <= MIN_DISTANCE)
+		{
+			uint8_t scalar = Coordinate::getPointScalar(xDistance, yDistance, zDistance);
+
+			float plusX = x / scalar;
+			float plusY = y / scalar;
+			float plusZ = z / scalar;
+
+			insertUnrolledPoints(unit, scalar, plusX, plusY, plusZ);
+		}
+
 		Coordinate coordinate = Coordinate((char *)unit, x, y, z);
 		route.push(coordinate);
 	}
+}
+
+void insertUnrolledPoints(const char *unit, uint8_t scalar, float plusX, float plusY, float plusZ)
+{
+	Coordinate lastPoint = route.back();
+
+	float x = lastPoint.getX();
+	float y = lastPoint.getY();
+	float z = lastPoint.getZ();
+
+	for (float i = 1; i <= abs(scalar); i++)
+		route.push(Coordinate((char *)unit, x + i * plusX, y + i * plusY, z + i * plusZ)); //
 }
 
 void goCallback(char *cmd, String res)
