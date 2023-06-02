@@ -25,7 +25,7 @@ void defaultCallback(char *cmd, String res);
 void goCallback(char *cmd, String res);
 void receiveDataFromClient();
 void parseJsonAsCoordinate(const char *jsonBuf);
-void insertUnrolledPoints(const char *unit, uint8_t scalar, float plusX, float plusY, float plusZ);
+void insertUnrolledPoints(const char *unit, uint8_t scalar, int16_t plusX, int16_t plusY, int16_t plusZ);
 
 /*-------------- Fuction Implementation --------------*/
 
@@ -76,7 +76,7 @@ void loop()
 	Coordinate point = route.front();
 
 	char buffer[50];
-	sprintf(buffer, "Going to (%.2f, %.2f, %.2f)", point.getX(), point.getY(), point.getZ());
+	sprintf(buffer, "Going to (%d, %.d, %d)", point.getX(), point.getY(), point.getZ());
 	client.write(buffer);
 	tt_sdk.go(point.getX(), point.getY(), point.getZ(), 40, goCallback);
 }
@@ -125,25 +125,25 @@ void parseJsonAsCoordinate(const char *jsonBuf)
 
 	for (const JsonObject point : pointsJson)
 	{
-		float x = point["x"];
-		float y = point["y"];
-		float z = point["z"];
+		int16_t x = point["x"];
+		int16_t y = point["y"];
+		int16_t z = point["z"];
 
 		Coordinate p1 = route.empty() ? Coordinate((char *)unit, 0.0, 0.0, 0.0) : route.back();
 		Coordinate p2 = Coordinate((char *)unit, x, y, z);
 
-		float xDistance = abs(p1.getX() - p2.getX());
-		float yDistance = abs(p1.getY() - p2.getY());
-		float zDistance = abs(p1.getZ() - p2.getZ());
+		int16_t xDistance = abs(p1.getX() - p2.getX());
+		int16_t yDistance = abs(p1.getY() - p2.getY());
+		int16_t zDistance = abs(p1.getZ() - p2.getZ());
 
 		if (xDistance >= MAX_DISTANCE || yDistance >= MAX_DISTANCE || zDistance >= MAX_DISTANCE ||
 			xDistance <= MIN_DISTANCE || yDistance <= MIN_DISTANCE || zDistance <= MIN_DISTANCE)
 		{
 			uint8_t scalar = Coordinate::getPointScalar(xDistance, yDistance, zDistance);
 
-			float plusX = x / scalar;
-			float plusY = y / scalar;
-			float plusZ = z / scalar;
+			int16_t plusX = x / scalar;
+			int16_t plusY = y / scalar;
+			int16_t plusZ = z / scalar;
 
 			insertUnrolledPoints(unit, scalar, plusX, plusY, plusZ);
 		}
@@ -151,17 +151,18 @@ void parseJsonAsCoordinate(const char *jsonBuf)
 		Coordinate coordinate = Coordinate((char *)unit, x, y, z);
 		route.push(coordinate);
 	}
+	Coordinate::printPoints(route);
 }
 
-void insertUnrolledPoints(const char *unit, uint8_t scalar, float plusX, float plusY, float plusZ)
+void insertUnrolledPoints(const char *unit, uint8_t scalar, int16_t plusX, int16_t plusY, int16_t plusZ)
 {
 	Coordinate lastPoint = route.back();
 
-	float x = lastPoint.getX();
-	float y = lastPoint.getY();
-	float z = lastPoint.getZ();
+	int16_t x = lastPoint.getX();
+	int16_t y = lastPoint.getY();
+	int16_t z = lastPoint.getZ();
 
-	for (float i = 1; i <= abs(scalar); i++)
+	for (int16_t i = 1; i <= abs(scalar); i++)
 		route.push(Coordinate((char *)unit, x + i * plusX, y + i * plusY, z + i * plusZ)); //
 }
 
