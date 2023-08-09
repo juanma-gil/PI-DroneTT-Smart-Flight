@@ -18,8 +18,8 @@ const char *password = "1cdunc0rd0ba";
 WiFiServer wifiServer(PORT);
 WiFiClient client;
 Route *route = Route::getInstance();
-std::queue<Coordinate> *routePoints;
-
+std::vector<Coordinate> *routePoints;
+int origin_index = 0;
 /*-------------- Fuction Declaration --------------*/
 
 void defaultCallback(char *cmd, String res);
@@ -74,7 +74,7 @@ void loop()
 	delay(1000);
 	ttSDK->takeOff(defaultCallback);
 	Coordinate point = routePoints->front();
-
+	origin_index++;
 	char buffer[50];
 	sprintf(buffer, "Going to (%d, %.d, %d)", point.getX(), point.getY(), point.getZ());
 	client.write(buffer);
@@ -104,14 +104,13 @@ void goCallback(char *cmd, String res)
 		client.write(msg);
 	}
 
-	if (res.indexOf("ok") != -1 && routePoints->size() > 1)
+	if (res.indexOf("ok") != -1 && routePoints->size() != origin_index + 1)
 	{
-		Coordinate origin = routePoints->front();
-		routePoints->pop();
-		Coordinate destination = routePoints->front();
+		Coordinate origin = routePoints->at(origin_index);
+		Coordinate destination = routePoints->at(origin_index + 1);
 		ttSDK->moveRealtiveTo(origin, destination, 40, goCallback);
 	}
-	else if (routePoints->size() == 1)
+	else if (routePoints->size() == origin_index + 1)
 	{
 		ttSDK->land(defaultCallback);
 		ttRGB->SetRGB(0, 255, 0);

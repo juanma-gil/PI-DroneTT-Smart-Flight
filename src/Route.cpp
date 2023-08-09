@@ -34,7 +34,7 @@ void Route::receiveRouteFromClient(WiFiClient *client)
 
 void Route::parseJsonAsCoordinate(const char *jsonBuf)
 {
-    std::queue<Coordinate> *route = Route::getInstance()->getRoute();
+    std::vector<Coordinate> *route = Route::getInstance()->getRoute();
     int i = 0;
     StaticJsonDocument<JSON_BUF_SIZE> doc;
     DeserializationError error = deserializeJson(doc, jsonBuf);
@@ -55,7 +55,7 @@ void Route::parseJsonAsCoordinate(const char *jsonBuf)
         int16_t y = point["y"];
         int16_t z = point["z"];
 
-        Coordinate p1 = route->empty() ? Coordinate((char *)unit, 0.0, 0.0, 0.0) : route->back();
+        Coordinate p1 = route->empty() ? Coordinate((char *)unit, 0.0, 0.0, 0.0) : route->front();
         Coordinate p2 = Coordinate((char *)unit, x, y, z);
 
         int16_t xDistance = abs(p1.getX() - p2.getX());
@@ -75,7 +75,7 @@ void Route::parseJsonAsCoordinate(const char *jsonBuf)
         }
 
         Coordinate coordinate = Coordinate((char *)unit, x, y, z);
-        route->push(coordinate);
+        route->push_back(coordinate);
     }
     Coordinate::printPoints(*route);
 }
@@ -90,5 +90,5 @@ void Route::insertUnrolledPoints(const char *unit, uint8_t scalar, int16_t plusX
     int16_t z = lastPoint.getZ();
 
     for (int16_t i = 1; i <= abs(scalar); i++)
-        Route::getRoute()->push(Coordinate((char *)unit, x + i * plusX, y + i * plusY, z + i * plusZ)); //
+        Route::getRoute()->push_back(Coordinate((char *)unit, x + i * plusX, y + i * plusY, z + i * plusZ));
 }
