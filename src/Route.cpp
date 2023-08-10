@@ -35,15 +35,14 @@ void Route::receiveRouteFromClient(WiFiClient *client)
 void Route::parseJsonAsCoordinate(const char *jsonBuf)
 {
     std::vector<Coordinate> *route = Route::getInstance()->getRoute();
-    int i = 0;
+    int i = -1;
     StaticJsonDocument<JSON_BUF_SIZE> doc;
     DeserializationError error = deserializeJson(doc, jsonBuf);
     if (error)
     {
         RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
         ttRGB->SetRGB(255, 0, 0);
-        Serial.print(F("deserializeJson() failed: "));
-        Serial.println(error.c_str());
+        Serial.printf("deserializeJson() failed: %s", error.c_str());
     }
 
     const char *unit = doc["unit"];
@@ -55,7 +54,7 @@ void Route::parseJsonAsCoordinate(const char *jsonBuf)
         int16_t y = point["y"];
         int16_t z = point["z"];
 
-        Coordinate p1 = route->empty() ? Coordinate((char *)unit, 0.0, 0.0, 0.0) : route->front();
+        Coordinate p1 = route->empty() ? Coordinate((char *)unit, 0, 0, 0) : route->at(++i);
         Coordinate p2 = Coordinate((char *)unit, x, y, z);
 
         int16_t xDistance = abs(p1.getX() - p2.getX());

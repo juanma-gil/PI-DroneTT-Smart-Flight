@@ -19,7 +19,10 @@ WiFiServer wifiServer(PORT);
 WiFiClient client;
 Route *route = Route::getInstance();
 std::vector<Coordinate> *routePoints;
-int origin_index = 0;
+int point_index = 0, vueltas = 3;
+
+UBaseType_t uxHighWaterMark;
+
 /*-------------- Fuction Declaration --------------*/
 
 void defaultCallback(char *cmd, String res);
@@ -54,7 +57,6 @@ void setup()
 
 void loop()
 {
-
 	while (routePoints->empty())
 	{
 		client = wifiServer.available();
@@ -73,12 +75,27 @@ void loop()
 
 	delay(1000);
 	ttSDK->takeOff(defaultCallback);
-	Coordinate point = routePoints->front();
-	origin_index++;
-	char buffer[50];
-	sprintf(buffer, "Going to (%d, %.d, %d)", point.getX(), point.getY(), point.getZ());
-	client.write(buffer);
-	ttSDK->go(point.getX(), point.getY(), point.getZ(), 40, goCallback);
+
+	while (1)
+	{
+		Coordinate origin = routePoints->at(point_index++);
+		char msg[100];
+		if (routePoints->size() == point_index)
+		{
+			point_index = 0;
+			vueltas--;
+			if (!vueltas)
+			{
+				ttSDK->land(defaultCallback);
+				while (1)
+					;
+			}
+		}
+		Coordinate destination = routePoints->at(point_index);
+		sprintf(msg, "Free stack space remaining: %d", uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL));
+		client.write(msg);
+		ttSDK->moveRealtiveTo(origin, destination, 40, defaultCallback);
+	}
 }
 
 void defaultCallback(char *cmd, String res)
@@ -94,28 +111,22 @@ void defaultCallback(char *cmd, String res)
 
 void goCallback(char *cmd, String res)
 {
-	RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
-	RMTT_Protocol *ttSDK = RMTT_Protocol::getInstance();
-
 	if (client.connected())
 	{
-		char msg[100];
+		char msg[50];
 		sprintf(msg, "cmd: %s, res: %s\n", cmd, res.c_str());
 		client.write(msg);
 	}
 
-	if (res.indexOf("ok") != -1 && routePoints->size() != origin_index + 1)
+	if (res.indexOf("ok") != -1) //&& routePoints->size() > point_index + 1
 	{
-		Coordinate origin = routePoints->at(origin_index);
-		Coordinate destination = routePoints->at(origin_index + 1);
+		Coordinate origin = routePoints->at(point_index++);
+		char msg[100];
+		client.write(msg);
+		if (routePoints->size() == point_index) point_index = 0;
+		Coordinate destination = routePoints->at(point_index);
+		sprintf(msg, "Stack %d", uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL));
+		client.write(msg);
 		ttSDK->moveRealtiveTo(origin, destination, 40, goCallback);
-	}
-	else if (routePoints->size() == origin_index + 1)
-	{
-		ttSDK->land(defaultCallback);
-		ttRGB->SetRGB(0, 255, 0);
-		client.write("Finished!");
-		while (1)
-			;
 	}
 }
