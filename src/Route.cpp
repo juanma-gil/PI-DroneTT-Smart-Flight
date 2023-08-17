@@ -57,10 +57,15 @@ void Route::parseJsonAsCoordinate(const char *jsonBuf)
         Coordinate p1 = route->empty() ? Coordinate((char *)unit, 0, 0, 0) : route->at(++i);
         Coordinate p2 = Coordinate((char *)unit, x, y, z);
 
+        char msg[50];
+        snprintf(msg, 50, "p1: %d, %d, %d, p2: %d, %d, %d", p1.getX(), p1.getY(), p1.getZ(), p2.getX(), p2.getY(), p2.getZ());
+        Serial.println(msg);
+
         int16_t xDistance = abs(p1.getX() - p2.getX());
         int16_t yDistance = abs(p1.getY() - p2.getY());
         int16_t zDistance = abs(p1.getZ() - p2.getZ());
-
+        snprintf(msg, 50, "xDistance: %d, yDistance: %d, zDistance: %d", xDistance, yDistance, zDistance);
+        Serial.println(msg);
         if (xDistance >= MAX_DISTANCE || yDistance >= MAX_DISTANCE || zDistance >= MAX_DISTANCE ||
             xDistance <= MIN_DISTANCE || yDistance <= MIN_DISTANCE || zDistance <= MIN_DISTANCE)
         {
@@ -74,6 +79,7 @@ void Route::parseJsonAsCoordinate(const char *jsonBuf)
         }
 
         Coordinate coordinate = Coordinate((char *)unit, x, y, z);
+
         route->push_back(coordinate);
     }
     Coordinate::printPoints(*route);
