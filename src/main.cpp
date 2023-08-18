@@ -19,12 +19,12 @@ WiFiServer wifiServer(PORT);
 WiFiClient client;
 Route *route = Route::getInstance();
 std::vector<Coordinate> *routePoints;
-int point_index = 0;
-
+int point_index = 0, isFirstTime = 1;
 UBaseType_t uxHighWaterMark;
 
 /*-------------- Fuction Declaration --------------*/
-
+void vSensorFunction(void *parameter);
+void takeOffProcess();
 void defaultCallback(char *cmd, String res);
 void missionCallback(char *cmd, String res);
 
@@ -44,7 +44,7 @@ void setup()
 
 	while (WiFi.status() != WL_CONNECTED)
 	{
-		delay(1000);
+		delay(500 / portTICK_PERIOD_MS);
 		Serial.println("Connecting to WiFi..");
 	}
 
@@ -61,26 +61,30 @@ void setup()
 		{
 			route->receiveRouteFromClient(&client);
 		}
+		delay(500);
 	}
 
 	ttRGB->SetRGB(200, 0, 255);
 
-	delay(500);
-
 	client.write("JSON ok. Starting mission");
 
-	ttSDK->startUntilControl();
+	/*-------------- Tasks  --------------*/
+	if (xTaskCreatePinnedToCore(vSensorFunction, "Sensor", 8000, NULL, 1, NULL, 0) != pdPASS)
+	{
+		Serial.println("Failed to create Sensor task");
+	};
 
-	ttSDK->getBattery(defaultCallback);
-
-	delay(1000);
-
-	ttSDK->takeOff(missionCallback);
+	vTaskStartScheduler();
 }
 
 void loop()
 {
+	delay(500);
 
+	if (isFirstTime)
+		takeOffProcess();
+
+	delay(100);
 	Coordinate origin = routePoints->at(point_index++);
 	if (routePoints->size() == point_index)
 	{
@@ -89,10 +93,30 @@ void loop()
 		ttSDK->land();
 		ttRGB->SetRGB(0, 255, 0);
 		while (1)
-			;
+			delay(500);
 	}
 	Coordinate destination = routePoints->at(point_index);
 	ttSDK->moveRealtiveTo(origin, destination, 10, missionCallback);
+}
+
+void vSensorFunction(void *parameter)
+{
+	delay(20000);
+	ttRGB->SetRGB(255, 0, 0);
+	char msg[50];
+	snprintf(msg, sizeof(msg), "Sensor landing...\n");
+	client.write(msg);
+	ttSDK->land(defaultCallback);
+	while (1)
+		delay(500);
+}
+
+void takeOffProcess()
+{
+	ttSDK->startUntilControl();
+	ttRGB->SetRGB(0, 0, 255);
+	ttSDK->takeOff(defaultCallback);
+	isFirstTime = 0;
 }
 
 void defaultCallback(char *cmd, String res)

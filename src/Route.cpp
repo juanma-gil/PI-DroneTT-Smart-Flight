@@ -21,14 +21,14 @@ void Route::receiveRouteFromClient(WiFiClient *client)
     {
         RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
         ttRGB->SetRGB(0, 255, 0);
-        while (client->available() > 0)
+        if (client->available() > 0)
         {
             String json = client->readStringUntil('\n');
             json.trim(); // Remove the trailing newline character
             client->write("Received JSON");
-            parseJsonAsCoordinate(json.c_str());
-            return;
+            return parseJsonAsCoordinate(json.c_str());
         }
+        delay(500);
     }
 }
 
@@ -57,15 +57,10 @@ void Route::parseJsonAsCoordinate(const char *jsonBuf)
         Coordinate p1 = route->empty() ? Coordinate((char *)unit, 0, 0, 0) : route->at(++i);
         Coordinate p2 = Coordinate((char *)unit, x, y, z);
 
-        char msg[50];
-        snprintf(msg, 50, "p1: %d, %d, %d, p2: %d, %d, %d", p1.getX(), p1.getY(), p1.getZ(), p2.getX(), p2.getY(), p2.getZ());
-        Serial.println(msg);
-
         int16_t xDistance = abs(p1.getX() - p2.getX());
         int16_t yDistance = abs(p1.getY() - p2.getY());
         int16_t zDistance = abs(p1.getZ() - p2.getZ());
-        snprintf(msg, 50, "xDistance: %d, yDistance: %d, zDistance: %d", xDistance, yDistance, zDistance);
-        Serial.println(msg);
+
         if (xDistance >= MAX_DISTANCE || yDistance >= MAX_DISTANCE || zDistance >= MAX_DISTANCE ||
             xDistance <= MIN_DISTANCE || yDistance <= MIN_DISTANCE || zDistance <= MIN_DISTANCE)
         {
@@ -82,7 +77,7 @@ void Route::parseJsonAsCoordinate(const char *jsonBuf)
 
         route->push_back(coordinate);
     }
-    Coordinate::printPoints(*route);
+    // Coordinate::printPoints(*route);
 }
 
 void Route::insertUnrolledPoints(const char *unit, uint8_t scalar, int16_t plusX, int16_t plusY, int16_t plusZ)
