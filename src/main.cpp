@@ -44,7 +44,7 @@ void setup()
 
 	while (WiFi.status() != WL_CONNECTED)
 	{
-		delay(500 / portTICK_PERIOD_MS);
+		delay(500);
 		Serial.println("Connecting to WiFi..");
 	}
 
@@ -54,37 +54,39 @@ void setup()
 
 	wifiServer.begin();
 
-	while (routePoints->empty())
+	client = wifiServer.available();
+	while (!client)
 	{
 		client = wifiServer.available();
-		if (client)
-		{
-			route->receiveRouteFromClient(&client);
-		}
 		delay(500);
+	};
+
+	Serial.println("Client connected");
+	while (routePoints->empty())
+	{
+		delay(500);
+		route->receiveRouteFromClient(&client);
 	}
+	Serial.println("Route received");
 
 	ttRGB->SetRGB(200, 0, 255);
 
 	client.write("JSON ok. Starting mission");
-
 	/*-------------- Tasks  --------------*/
 	if (xTaskCreatePinnedToCore(vSensorFunction, "Sensor", 8000, NULL, 1, NULL, 0) != pdPASS)
 	{
 		Serial.println("Failed to create Sensor task");
 	};
-
+	Serial.println("Created Tasks");
 	vTaskStartScheduler();
 }
 
 void loop()
 {
-	delay(500);
-
+	delay(100);
 	if (isFirstTime)
 		takeOffProcess();
 
-	delay(100);
 	Coordinate origin = routePoints->at(point_index++);
 	if (routePoints->size() == point_index)
 	{
@@ -104,11 +106,7 @@ void vSensorFunction(void *parameter)
 	delay(20000);
 	ttRGB->SetRGB(255, 0, 0);
 	char msg[50];
-	snprintf(msg, sizeof(msg), "Sensor landing...\n");
-	client.write(msg);
-	ttSDK->land(defaultCallback);
-	while (1)
-		delay(500);
+	ttSDK->up(150, missionCallback);
 }
 
 void takeOffProcess()

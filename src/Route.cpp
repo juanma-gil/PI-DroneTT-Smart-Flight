@@ -17,18 +17,15 @@ Route *Route::getInstance()
 
 void Route::receiveRouteFromClient(WiFiClient *client)
 {
-    while (client->connected())
+    RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
+    ttRGB->SetRGB(0, 255, 0);
+    String json;
+    if (client->available() > 0)
     {
-        RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
-        ttRGB->SetRGB(0, 255, 0);
-        if (client->available() > 0)
-        {
-            String json = client->readStringUntil('\n');
-            json.trim(); // Remove the trailing newline character
-            client->write("Received JSON");
-            return parseJsonAsCoordinate(json.c_str());
-        }
-        delay(500);
+        json = client->readStringUntil('\n');
+        json.trim(); // Remove the trailing newline character
+        client->write("Received JSON");
+        return parseJsonAsCoordinate(json.c_str());
     }
 }
 
