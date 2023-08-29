@@ -9,6 +9,12 @@ Utils *Utils::getInstance()
     {
         instance = new Utils;
         xSemaphore = xSemaphoreCreateMutex();
+        if(xSemaphoreGive(xSemaphore) == pdTRUE){
+            Serial.println("Utils Semaphore released");
+        }
+        else{
+            Serial.println("Utils Semaphore not released");
+        };
         return instance;
     }
     else
@@ -17,10 +23,11 @@ Utils *Utils::getInstance()
     }
 }
 
-void Utils::slog(char *msg)
+int8_t Utils::slog(char *msg)
 {
     if (xSemaphoreTake(xSemaphore, portMAX_DELAY) == pdFAIL)
-        return;
+        return -1;
     Serial.println(msg);
-    xSemaphoreGive(xSemaphore) == pdFAIL;
+    if(xSemaphoreGive(xSemaphore) == pdFAIL) return -1;
+    else return 0;
 }

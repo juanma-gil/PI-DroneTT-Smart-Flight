@@ -11,5 +11,5 @@ private:
 
 public:
     static Utils *getInstance();
-    static void slog(char *msg);
+    static int8_t slog(char *msg);
 };
