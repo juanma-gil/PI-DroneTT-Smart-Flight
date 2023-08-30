@@ -4,13 +4,14 @@
 #include <unistd.h>
 #include <Arduino.h>
 #include <WiFi.h>
+#include <Wire.h>
 #include <RMTT_Libs.h>
 #include "../include/Route.h"
 #include "../include/Utils.h"
 
 #define PORT 5001
-#define missionDELAY (pdMS_TO_TICKS(2000))
-#define sensorDELAY (pdMS_TO_TICKS(3000))
+#define missionDELAY (pdMS_TO_TICKS(100))
+#define sensorDELAY (pdMS_TO_TICKS(150))
 
 /*-------------- Global Variables --------------*/
 
@@ -32,6 +33,11 @@ UBaseType_t uxHighWaterMark;
 
 TaskHandle_t sensorTaskHandle, missionTaskHandle;
 
+RMTT_TOF tt_sensor;
+float measure = 0;
+
+bool sensorFlag = false;
+
 /*-------------- Fuction Declaration --------------*/
 
 void vSensorFunction(void *parameter);
@@ -51,9 +57,19 @@ void setup()
 	Serial.begin(115200);
 	Serial1.begin(1000000, SERIAL_8N1, 23, 18);
 
-	delay(1000);
-	WiFi.begin(ssid, password);
+	/* Initialize sensor */
+	Wire.begin(27, 26);
+	Wire.setClock(100000);
+	tt_sensor.SetTimeout(500);
+	if (!tt_sensor.Init())
+	{
+		Serial.println("Failed to detect and initialize sensor!");
+		while (1)
+		{
+		}
+	}
 
+	WiFi.begin(ssid, password);
 	while (WiFi.status() != WL_CONNECTED)
 	{
 		delay(1000);
@@ -108,27 +124,32 @@ void loop()
 
 void vMissionFunction(void *parameter)
 {
-	TickType_t count;
+	TickType_t count = xTaskGetTickCount();
 	char msg[100];
-	if (sprintf(msg, "Mission: running on Core %d\n", xPortGetCoreID()) != -1)
+	Serial.printf("Mission: running on Core %d\n", xPortGetCoreID());
+
+	for (;;)
+	{
+		count = xTaskGetTickCount() - count;
+		vTaskDelay(missionDELAY);
+		/* sprintf(msg, "Mission waited for %d ms\n", pdTICKS_TO_MS(count));
+		Serial.println(msg);
 		if (utils->slog(msg) == -1)
 		{
 			while (1)
 				delay(10);
-		};
-
-	for (;;)
-	{
-		vTaskDelay(missionDELAY);
-		count = xTaskGetTickCount();
-		ttSDK->motorOn(defaultCallback);
-		count = xTaskGetTickCount() - count;
-		if (sprintf(msg, "Mission waited for: %d ms\n", pdTICKS_TO_MS(count)) != -1)
-			if (utils->slog(msg) == -1)
-			{
-				while (1)
-					delay(10);
-			};
+		}; */
+		// ttSDK->motorOn(defaultCallback);
+		if (sensorFlag)
+		{
+			ttRGB->SetRGB(255, 0, 0);
+			ttSDK->motorOff(defaultCallback);
+		}
+		else
+		{
+			ttRGB->SetRGB(0, 255, 0);
+			ttSDK->motorOn(defaultCallback);
+		}
 		//  if (isFirstTime)
 		//  	takeOffProcess();
 
@@ -149,26 +170,32 @@ void vMissionFunction(void *parameter)
 
 void vSensorFunction(void *parameter)
 {
-	TickType_t count;
+	TickType_t count = xTaskGetTickCount();
 	char msg[100];
-	if (sprintf(msg, "Sensor: running on Core %d\n", xPortGetCoreID()) != -1)
+	Serial.printf("Sensor: running on Core %d\n", xPortGetCoreID());
+	for (;;)
+	{
+		vTaskDelay(sensorDELAY);
+		count = xTaskGetTickCount() - count;
+		/* sprintf(msg, "Sensor waited for %d ms\n", pdTICKS_TO_MS(count));
+		Serial.println(msg);
 		if (utils->slog(msg) == -1)
 		{
 			while (1)
 				delay(10);
-		};
-	for (;;)
-	{
-		vTaskDelay(sensorDELAY);
-		count = xTaskGetTickCount();
-		ttSDK->motorOff(defaultCallback);
-		count = xTaskGetTickCount() - count;
-		if (sprintf(msg, "Sensor waited for: %d ms\n", pdTICKS_TO_MS(count)) != -1)
-			if (utils->slog(msg) == -1)
-			{
-				while (1)
-					delay(10);
-			};
+		};  */
+		measure = tt_sensor.ReadRangeSingleMillimeters(); // Performs a single-shot range measurement and returns the reading in millimeters
+		// measure = measure / 1000;
+		// Serial.println(measure);
+		if (tt_sensor.TimeoutOccurred())
+		{
+			Serial.println("TIMEOUT");
+		}
+		else
+		{
+			sensorFlag = (measure < 300) ? true : false;
+			// ttSDK->motorOff(defaultCallback);
+		}
 	}
 }
 
