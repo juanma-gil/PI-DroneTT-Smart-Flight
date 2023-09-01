@@ -10,8 +10,13 @@
 #include "../include/Utils.h"
 
 #define PORT 5001
-#define missionDELAY (pdMS_TO_TICKS(100))
-#define sensorDELAY (pdMS_TO_TICKS(150))
+#define missionDELAY (pdMS_TO_TICKS(500))
+#define sensorDELAY (pdMS_TO_TICKS(500))
+#define logDELAY (pdMS_TO_TICKS(2000))
+#define logQueueDELAY (pdMS_TO_TICKS(50))
+
+#define logQueueSIZE (UBaseType_t)100 * (5 * sizeof(char)) // Aprox 5 messages of 50 chars
+#define logItemSIZE (UBaseType_t)100 * (sizeof(char))	   // 50 chars
 
 /*-------------- Global Variables --------------*/
 
@@ -21,6 +26,7 @@ const char *password = "1cdunc0rd0ba";
 WiFiServer wifiServer(PORT);
 WiFiClient client;
 
+RMTT_TOF tt_sensor;
 RMTT_Protocol *ttSDK;
 RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
 Utils *utils;
@@ -31,9 +37,9 @@ std::vector<Coordinate> *routePoints;
 
 UBaseType_t uxHighWaterMark;
 
-TaskHandle_t sensorTaskHandle, missionTaskHandle;
+TaskHandle_t sensorTaskHandle, missionTaskHandle, loggerTaskHandle;
+QueueHandle_t xLogQueue = NULL;
 
-RMTT_TOF tt_sensor;
 float measure = 0;
 
 bool sensorFlag = false;
@@ -42,8 +48,10 @@ bool sensorFlag = false;
 
 void vSensorFunction(void *parameter);
 void vMissionFunction(void *parameter);
+void vLogFunction(void *parameter);
 void takeOffProcess();
 void defaultCallback(char *cmd, String res);
+void initialCallback(char *cmd, String res);
 void missionCallback(char *cmd, String res);
 
 /*-------------- Fuction Implementation --------------*/
@@ -53,6 +61,8 @@ void setup()
 	ttRGB->Init();
 	route = route->getInstance();
 	routePoints = route->getRoute();
+	utils = Utils::getInstance();
+	ttSDK = RMTT_Protocol::getInstance();
 
 	Serial.begin(115200);
 	Serial1.begin(1000000, SERIAL_8N1, 23, 18);
@@ -63,24 +73,24 @@ void setup()
 	tt_sensor.SetTimeout(500);
 	if (!tt_sensor.Init())
 	{
-		Serial.println("Failed to detect and initialize sensor!");
+		utils->slog("Failed to detect and initialize sensor!");
 		while (1)
 		{
 		}
 	}
 
+	/*---------------------------------------------------------*/
+
 	WiFi.begin(ssid, password);
 	while (WiFi.status() != WL_CONNECTED)
 	{
 		delay(1000);
-		Serial.println("Connecting to WiFi..");
+		utils->slog("Connecting to WiFi..");
 	}
 
-	Serial.println("Connected to the WiFi network");
+	utils->slog("Connected to the WiFi network");
 	Serial.println(WiFi.localIP());
 	ttRGB->SetRGB(200, 255, 0);
-	ttSDK = RMTT_Protocol::getInstance();
-	utils = Utils::getInstance();
 	wifiServer.begin();
 
 	client = wifiServer.available();
@@ -90,66 +100,82 @@ void setup()
 		delay(10);
 	};
 
-	Serial.println("Client connected");
-	/* while (routePoints->empty())
-	{
-		delay(10);
-		route->receiveRouteFromClient(&client);
-	}
-	Serial.println("Route received"); */
+	utils->slog("Client connected");
 
-	// ttSDK->startUntilControl();
-	ttSDK->sdkOn(defaultCallback);
+	/* while (routePoints->empty())
+		{
+			delay(10);
+			route->receiveRouteFromClient(&client);
+		}
+		utils.slog("Route received"); */
+
+	ttSDK->sdkOn(initialCallback);
+	ttSDK->getBattery(initialCallback);
 	ttRGB->SetRGB(200, 0, 255);
-	ttSDK->getBattery(defaultCallback);
-	char msg[100];
-	Serial.println("Starting tasks");
-	// client.write("JSON ok. Starting mission");
+	utils->slog("Starting tasks");
+
+	/*-------------- Queues --------------*/
+
+	xLogQueue = xQueueCreate(logQueueSIZE, logItemSIZE);
+	if (xLogQueue == NULL)
+	{
+		utils->slog("Queue creation has FAILED");
+	}
 
 	/*-------------- Tasks  --------------*/
-	if (xTaskCreatePinnedToCore(vSensorFunction, "Sensor", 8000, NULL, 5, &sensorTaskHandle, 0) != pdPASS)
+
+	if (xTaskCreatePinnedToCore(vSensorFunction, "Sensor", configMINIMAL_STACK_SIZE * 10, NULL, 5, &sensorTaskHandle, 1) != pdPASS)
 	{
-		Serial.println("Failed to create Sensor task");
+		utils->slog("Failed to create Sensor task");
 	};
-	if (xTaskCreatePinnedToCore(vMissionFunction, "Mission", 8000, NULL, 7, &missionTaskHandle, 1) != pdPASS)
+	if (xTaskCreatePinnedToCore(vLogFunction, "Logger", configMINIMAL_STACK_SIZE, NULL, 2, &loggerTaskHandle, 0) != pdPASS)
 	{
-		Serial.println("Failed to create Sensor task");
+		utils->slog("Failed to create Logger task");
+	}
+	if (xTaskCreatePinnedToCore(vMissionFunction, "Mission", configMINIMAL_STACK_SIZE * 10, NULL, 7, &missionTaskHandle, 0) != pdPASS)
+	{
+		utils->slog("Failed to create Sensor task");
 	};
-	vTaskStartScheduler();
 }
 
 void loop()
 {
+	vTaskDelete(NULL);
 }
 
 void vMissionFunction(void *parameter)
 {
-	TickType_t count = xTaskGetTickCount();
 	char msg[100];
-	Serial.printf("Mission: running on Core %d\n", xPortGetCoreID());
-
+	snprintf(msg, sizeof(msg), "Mission: running on Core %d\n", xPortGetCoreID());
+	short int on = 0;
 	for (;;)
 	{
-		count = xTaskGetTickCount() - count;
 		vTaskDelay(missionDELAY);
-		/* sprintf(msg, "Mission waited for %d ms\n", pdTICKS_TO_MS(count));
-		Serial.println(msg);
-		if (utils->slog(msg) == -1)
+		if (xQueueSend(xLogQueue, &msg, logQueueDELAY) != pdTRUE)
 		{
-			while (1)
-				delay(10);
-		}; */
-		// ttSDK->motorOn(defaultCallback);
+			utils->slog("Mission: Queue error");
+		}
+
+		ttRGB->SetRGB(0, 255, 0);
 		if (sensorFlag)
 		{
 			ttRGB->SetRGB(255, 0, 0);
-			ttSDK->motorOff(defaultCallback);
+			if (on)
+			{
+				ttSDK->motorOff(defaultCallback);
+				on = 0;
+			}
 		}
 		else
 		{
 			ttRGB->SetRGB(0, 255, 0);
-			ttSDK->motorOn(defaultCallback);
+			if (!on)
+			{
+				ttSDK->motorOn(defaultCallback);
+				on = 1;
+			}
 		}
+
 		//  if (isFirstTime)
 		//  	takeOffProcess();
 
@@ -172,29 +198,48 @@ void vSensorFunction(void *parameter)
 {
 	TickType_t count = xTaskGetTickCount();
 	char msg[100];
-	Serial.printf("Sensor: running on Core %d\n", xPortGetCoreID());
+	sniprintf(msg, sizeof(msg), "Sensor: running on Core %d\n", xPortGetCoreID());
+
 	for (;;)
 	{
 		vTaskDelay(sensorDELAY);
-		count = xTaskGetTickCount() - count;
-		/* sprintf(msg, "Sensor waited for %d ms\n", pdTICKS_TO_MS(count));
-		Serial.println(msg);
-		if (utils->slog(msg) == -1)
+		if (xQueueSend(xLogQueue, &msg, logQueueDELAY) != pdTRUE)
 		{
-			while (1)
-				delay(10);
-		};  */
+			utils->slog("Sensor: Queue error");
+		}
 		measure = tt_sensor.ReadRangeSingleMillimeters(); // Performs a single-shot range measurement and returns the reading in millimeters
-		// measure = measure / 1000;
-		// Serial.println(measure);
 		if (tt_sensor.TimeoutOccurred())
 		{
-			Serial.println("TIMEOUT");
+			xQueueSend(xLogQueue, "Sensor timeout\n", 0);
 		}
 		else
 		{
 			sensorFlag = (measure < 300) ? true : false;
-			// ttSDK->motorOff(defaultCallback);
+		}
+	}
+}
+
+/**
+ * @brief task to log messages using serial and writing a log file
+ * The task is created with the lowest priority and pinned to core 0,
+ * the long of the message should be minor to 50 chars,
+ * because the queue has a size of 50 bytes * 5 messages
+ * @param parameter
+ */
+void vLogFunction(void *parameter)
+{
+	char msg[100];
+	for (;;)
+	{
+		vTaskDelay(logDELAY);
+
+		if (xQueueReceive(xLogQueue, &msg, 0) == pdTRUE)
+		{
+			utils->slog(msg);
+		}
+		else
+		{
+			utils->slog("LogFunction: Empty Queue");
 		}
 	}
 }
@@ -207,40 +252,25 @@ void takeOffProcess()
 	isFirstTime = 0;
 }
 
+void initialCallback(char *cmd, String res)
+{
+	char msg[100];
+	snprintf(msg, sizeof(msg), "cmd: %s, res: %s\n", cmd, res.c_str());
+	utils->slog(msg);
+}
+
 void defaultCallback(char *cmd, String res)
 {
-	if (client.connected())
-	{
-		char msg[50];
-		snprintf(msg, sizeof(msg), "cmd: %s, res: %s\n", cmd, res.c_str());
-		client.write(msg);
-		if (utils->slog(msg) == -1)
-		{
-			while (1)
-				delay(10);
-		};
-	} /*
-	 char msg[50];
-	 snprintf(msg, sizeof(msg), "cmd: %s, res: %s\n", cmd, res.c_str());
-	 utils->slog(msg);
-	  */
+	char msg[100];
+	snprintf(msg, sizeof(msg), "cmd: %s, res: %s - DefaultCallback", cmd, res.c_str());
+	xQueueSend(xLogQueue, &msg, logQueueDELAY);
 }
 
 void missionCallback(char *cmd, String res)
 {
-	/* char msg[100];
-
-	if (client.connected())
-	{
-		snprintf(msg, sizeof(msg), "cmd: %s, res: %s\n", cmd, res.c_str());
-		client.write(msg);
-	}
-
-	if (res.indexOf("ok") == -1)
-	{
-		snprintf(msg, sizeof(msg), "ERROR: landing ...\n");
-		client.write(msg);
-		ttSDK->land();
-		ttRGB->SetRGB(255, 0, 0);
-	} */
+	char msg[100];
+	snprintf(msg, sizeof(msg), "MissionCallback, running in core = %d", xPortGetCoreID());
+	utils->slog(msg);
+	snprintf(msg, sizeof(msg), "cmd: %s, res: %s\n", cmd, res.c_str());
+	utils->slog(msg);
 }
