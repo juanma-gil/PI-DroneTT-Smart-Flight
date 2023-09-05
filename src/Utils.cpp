@@ -9,12 +9,8 @@ Utils *Utils::getInstance()
     {
         instance = new Utils;
         xSemaphore = xSemaphoreCreateMutex();
-        return instance;
     }
-    else
-    {
-        return instance;
-    }
+    return instance;
 }
 
 void Utils::slog(const char *msg)

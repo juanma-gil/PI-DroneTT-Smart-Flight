@@ -2,7 +2,6 @@
 
 #include <Arduino.h>
 #include <stdio.h>
-#include <errno.h>
 
 class Utils
 {
