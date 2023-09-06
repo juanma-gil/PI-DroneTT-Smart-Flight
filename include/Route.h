@@ -3,7 +3,7 @@
 #include <WiFi.h>
 #include <ArduinoJson.h>
 #include <RMTT_Libs.h>
-#include <queue>
+#include <vector>
 #define JSON_BUF_SIZE 1024
 
 class Route
@@ -12,15 +12,15 @@ private:
     static Route *instance;
     Route(Route const &) {}
     Route &operator=(Route const &) {}
-    std::queue<Coordinate> *route;
+    std::vector<Coordinate> *route;
     Route()
     {
-        route = new std::queue<Coordinate>();
+        route = new std::vector<Coordinate>();
     };
 
 public:
     static Route *getInstance();
-    std::queue<Coordinate> *getRoute()
+    std::vector<Coordinate> *getRoute()
     {
         return route;
     }

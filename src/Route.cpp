@@ -17,33 +17,29 @@ Route *Route::getInstance()
 
 void Route::receiveRouteFromClient(WiFiClient *client)
 {
-    while (client->connected())
+    RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
+    ttRGB->SetRGB(0, 255, 0);
+    String json;
+    if (client->available() > 0)
     {
-        RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
-        ttRGB->SetRGB(0, 255, 0);
-        while (client->available() > 0)
-        {
-            String json = client->readStringUntil('\n');
-            json.trim(); // Remove the trailing newline character
-            client->write("Received JSON");
-            parseJsonAsCoordinate(json.c_str());
-            return;
-        }
+        json = client->readStringUntil('\n');
+        json.trim(); // Remove the trailing newline character
+        client->write("Received JSON");
+        return parseJsonAsCoordinate(json.c_str());
     }
 }
 
 void Route::parseJsonAsCoordinate(const char *jsonBuf)
 {
-    std::queue<Coordinate> *route = Route::getInstance()->getRoute();
-    int i = 0;
+    std::vector<Coordinate> *route = Route::getInstance()->getRoute();
+    int i = -1;
     StaticJsonDocument<JSON_BUF_SIZE> doc;
     DeserializationError error = deserializeJson(doc, jsonBuf);
     if (error)
     {
         RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
         ttRGB->SetRGB(255, 0, 0);
-        Serial.print(F("deserializeJson() failed: "));
-        Serial.println(error.c_str());
+        Serial.printf("deserializeJson() failed: %s", error.c_str());
     }
 
     const char *unit = doc["unit"];
@@ -55,7 +51,7 @@ void Route::parseJsonAsCoordinate(const char *jsonBuf)
         int16_t y = point["y"];
         int16_t z = point["z"];
 
-        Coordinate p1 = route->empty() ? Coordinate((char *)unit, 0.0, 0.0, 0.0) : route->back();
+        Coordinate p1 = route->empty() ? Coordinate((char *)unit, 0, 0, 0) : route->at(++i);
         Coordinate p2 = Coordinate((char *)unit, x, y, z);
 
         int16_t xDistance = abs(p1.getX() - p2.getX());
@@ -75,9 +71,10 @@ void Route::parseJsonAsCoordinate(const char *jsonBuf)
         }
 
         Coordinate coordinate = Coordinate((char *)unit, x, y, z);
-        route->push(coordinate);
+
+        route->push_back(coordinate);
     }
-    Coordinate::printPoints(*route);
+    // Coordinate::printPoints(*route);
 }
 
 void Route::insertUnrolledPoints(const char *unit, uint8_t scalar, int16_t plusX, int16_t plusY, int16_t plusZ)
@@ -90,5 +87,5 @@ void Route::insertUnrolledPoints(const char *unit, uint8_t scalar, int16_t plusX
     int16_t z = lastPoint.getZ();
 
     for (int16_t i = 1; i <= abs(scalar); i++)
-        Route::getRoute()->push(Coordinate((char *)unit, x + i * plusX, y + i * plusY, z + i * plusZ)); //
+        Route::getRoute()->push_back(Coordinate((char *)unit, x + i * plusX, y + i * plusY, z + i * plusZ));
 }
