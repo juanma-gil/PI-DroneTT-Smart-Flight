@@ -28,11 +28,14 @@ WiFiServer wifiServer(PORT);
 WiFiClient client;
 
 RMTT_TOF tt_sensor;
-RMTT_Protocol *ttSDK;
+RMTT_Protocol *ttSDK = RMTT_Protocol::getInstance();
 RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
-Utils *utils;
+Utils *utils = Utils::getInstance();
 
-int point_index = 0, isFirstTime = 1;
+uint8_t isFirstTime = 1;
+uint16_t point_index = 0;
+uint16_t measure = 0;
+
 Route *route = Route::getInstance();
 std::vector<Coordinate> *routePoints;
 
@@ -41,11 +44,7 @@ UBaseType_t uxHighWaterMark;
 TaskHandle_t sensorTaskHandle, missionTaskHandle, loggerTaskHandle, dodgeTaskHandle;
 QueueHandle_t xLogQueue = NULL;
 
-SemaphoreHandle_t xCmdMutex;
-
-float measure = 0;
-
-bool sensorFlag = false;
+SemaphoreHandle_t xSensorMutex = NULL;
 
 /*-------------- Fuction Declaration --------------*/
 
@@ -54,7 +53,6 @@ void vMissionFunction(void *parameter);
 void vDodgeFunction(void *parameter);
 void vLogFunction(void *parameter);
 void takeOffProcess();
-void defaultCallback(char *cmd, String res);
 void initialCallback(char *cmd, String res);
 void missionCallback(char *cmd, String res);
 
@@ -65,9 +63,7 @@ void setup()
 	ttRGB->Init();
 	route = route->getInstance();
 	routePoints = route->getRoute();
-	utils = Utils::getInstance();
-	ttSDK = RMTT_Protocol::getInstance();
-	xCmdMutex = xSemaphoreCreateMutex();
+	xSensorMutex = xSemaphoreCreateBinary();
 
 	Serial.begin(115200);
 	Serial1.begin(1000000, SERIAL_8N1, 23, 18);
@@ -81,6 +77,7 @@ void setup()
 		utils->slog("Failed to detect and initialize sensor!");
 		while (1)
 		{
+			delay(10);
 		}
 	}
 
@@ -106,6 +103,11 @@ void setup()
 
 	utils->slog("Client connected");
 
+	if (xSensorMutex == NULL)
+	{
+		client.write("Mutex creation has FAILED");
+	}
+
 	while (routePoints->empty())
 	{
 		delay(10);
@@ -127,15 +129,15 @@ void setup()
 
 	/*-------------- Tasks  --------------*/
 
-	if (xTaskCreatePinnedToCore(vSensorFunction, "Sensor", configMINIMAL_STACK_SIZE * 3, NULL, 15, &sensorTaskHandle, 1) != pdPASS)
+	if (xTaskCreatePinnedToCore(vSensorFunction, "Sensor", configMINIMAL_STACK_SIZE * 4, NULL, 15, &sensorTaskHandle, 1) != pdPASS)
 	{
 		utils->slog("Failed to create Sensor task");
 	};
-	if (xTaskCreatePinnedToCore(vLogFunction, "Logger", configMINIMAL_STACK_SIZE * 5, NULL, 8, &loggerTaskHandle, 0) != pdPASS)
+	if (xTaskCreatePinnedToCore(vLogFunction, "Logger", configMINIMAL_STACK_SIZE * 4, NULL, 8, &loggerTaskHandle, 0) != pdPASS)
 	{
 		utils->slog("Failed to create Logger task");
 	}
-	if (xTaskCreatePinnedToCore(vDodgeFunction, "Dodge", configMINIMAL_STACK_SIZE * 3, NULL, 20, &dodgeTaskHandle, 1) != pdPASS)
+	if (xTaskCreatePinnedToCore(vDodgeFunction, "Dodge", configMINIMAL_STACK_SIZE * 4, NULL, 20, &dodgeTaskHandle, 1) != pdPASS)
 	{
 		utils->slog("Failed to create Dodge task");
 	};
@@ -157,31 +159,23 @@ void vMissionFunction(void *parameter)
 	{
 		vTaskDelay(missionDELAY);
 
-		if (isFirstTime)
-			takeOffProcess();
+		takeOffProcess();
 
-		if (xSemaphoreTake(xCmdMutex, missionDELAY * 5) == pdPASS)
+		xQueueSend(xLogQueue, &msg, logQueueDELAY);
+
+		Coordinate origin = routePoints->at(point_index++);
+		if (routePoints->size() == point_index)
 		{
-			Coordinate origin = routePoints->at(point_index++);
-			if (routePoints->size() == point_index)
-			{
-				char msg[50];
-				sniprintf(msg, sizeof(msg), "Mission finished, landing ...");
-				xQueueSend(xLogQueue, &msg, logQueueDELAY);
-				ttSDK->land();
-				ttRGB->SetRGB(0, 255, 0);
-				while (1)
-					vTaskDelay(missionDELAY);
-			}
-			Coordinate destination = routePoints->at(point_index);
-			ttSDK->moveRealtiveTo(origin, destination, 10, missionCallback);
-			xSemaphoreGive(xCmdMutex);
-		}
-		else
-		{
-			snprintf(msg, sizeof(msg), "Mission failed, mutex timeout");
+			char msg[50];
+			sniprintf(msg, sizeof(msg), "Mission finished, landing ...");
 			xQueueSend(xLogQueue, &msg, logQueueDELAY);
+			ttSDK->land();
+			ttRGB->SetRGB(0, 255, 0);
+			while (1)
+				vTaskDelay(missionDELAY);
 		}
+		Coordinate destination = routePoints->at(point_index);
+		ttSDK->moveRealtiveTo(origin, destination, 10, missionCallback);
 	}
 }
 
@@ -198,7 +192,13 @@ void vSensorFunction(void *parameter)
 			xQueueSend(xLogQueue, "Sensor timeout\n", 0);
 			return;
 		}
-		sensorFlag = measure < 300;
+		if (measure < 300)
+		{
+			if (xSemaphoreGive(xSensorMutex) == pdFAIL)
+			{
+				xQueueSend(xLogQueue, "Sensor function couldn't release mutex\n", 0);
+			}
+		}
 	}
 }
 
@@ -208,22 +208,13 @@ void vDodgeFunction(void *parameter)
 	for (;;)
 	{
 		vTaskDelay(dodgeDELAY);
-		if (sensorFlag && xSemaphoreTake(xCmdMutex, dodgeDELAY) == pdPASS)
+		// TODO: cuando se decida esquivar tener en cuenta que habría que insertar en la ruta el
+		// punto de esquive xq sino no va a poder hacer el moveRelative,luego volver a la ruta original
+		if (xSemaphoreTake(xSensorMutex, portMAX_DELAY) == pdPASS)
 		{
-			// TODO: Limpiar el comando en curso, si se consigue eso, este mutex estaría de más
-			// Cuando se decida esquivar tener en cuenta que habría que insertar en la ruta el
-			// punto de esquive xq sino no va a poder hacer el moveRelative,luego volver a la ruta original
 			ttRGB->SetRGB(255, 0, 0);
+			xQueueSend(xLogQueue, "Interrupting current command", logQueueDELAY);
 			ttSDK->land(missionCallback);
-			vTaskDelete(missionTaskHandle);
-			vTaskDelete(sensorTaskHandle);
-			vTaskDelete(loggerTaskHandle);
-			while (1)
-			{
-				vTaskDelay(logDELAY);
-				ttRGB->SetRGB(100, 255, 50);
-			}
-			xSemaphoreGive(xCmdMutex);
 		}
 	}
 }
@@ -255,9 +246,12 @@ void vLogFunction(void *parameter)
 
 void takeOffProcess()
 {
+	if (!isFirstTime)
+		return;
+
 	ttRGB->SetRGB(0, 0, 255);
-	ttSDK->getBattery(defaultCallback);
-	ttSDK->takeOff(defaultCallback);
+	ttSDK->getBattery(missionCallback);
+	ttSDK->takeOff(missionCallback);
 	isFirstTime = 0;
 }
 
@@ -268,16 +262,17 @@ void initialCallback(char *cmd, String res)
 	utils->slog(msg);
 }
 
-void defaultCallback(char *cmd, String res)
-{
-	char msg[100];
-	snprintf(msg, sizeof(msg), "cmd: %s, res: %s - DefaultCallback", cmd, res.c_str());
-	xQueueSend(xLogQueue, &msg, logQueueDELAY);
-}
-
 void missionCallback(char *cmd, String res)
 {
 	char msg[100];
+
+	if (res.indexOf("error") != -1)
+	{
+		snprintf(msg, sizeof(msg), "ERROR: %s", res);
+		xQueueSend(xLogQueue, &msg, logQueueDELAY);
+		ttSDK->land();
+	}
+
 	snprintf(msg, sizeof(msg), "cmd: %s, res: %s - MissionCallback", cmd, res.c_str());
 	xQueueSend(xLogQueue, &msg, logQueueDELAY);
 }

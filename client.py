@@ -28,7 +28,7 @@ try:
         response = sock.recv(1024)  # Adjust the buffer size as needed
         if not response:
             break
-        print("Received response:", response.decode('ascii'))
+        print("Received response:", response.decode('utf-8'))
 
 finally:
     # Close the socket
