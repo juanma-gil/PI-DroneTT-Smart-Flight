@@ -10,10 +10,11 @@
 #include "../include/Utils.h"
 
 #define PORT 5001
+#define SPEED 20
 #define missionDELAY (pdMS_TO_TICKS(100))
 #define sensorDELAY (pdMS_TO_TICKS(100))
 #define dodgeDELAY (pdMS_TO_TICKS(10))
-#define logDELAY (pdMS_TO_TICKS(2000))
+#define logDELAY (pdMS_TO_TICKS(500))
 #define logQueueDELAY (pdMS_TO_TICKS(50))
 
 #define logQueueSIZE (UBaseType_t)100 * (5 * sizeof(char)) // Aprox 5 messages of 100 chars
@@ -35,6 +36,9 @@ Utils *utils = Utils::getInstance();
 uint8_t isFirstTime = 1;
 uint16_t point_index = 0;
 uint16_t measure = 0;
+int16_t estimatedX = 0;
+int16_t estimatedY = 0;
+int16_t estimatedZ = 0;
 
 Route *route = Route::getInstance();
 std::vector<Coordinate> *routePoints;
@@ -55,6 +59,7 @@ void vLogFunction(void *parameter);
 void takeOffProcess();
 void initialCallback(char *cmd, String res);
 void missionCallback(char *cmd, String res);
+void moveRelativeCallback(char *cmd, String res, MoveRelativeRes moveRelativeRes);
 
 /*-------------- Fuction Implementation --------------*/
 
@@ -116,7 +121,7 @@ void setup()
 	utils->slog("Route received");
 
 	ttSDK->sdkOn(initialCallback);
-	ttSDK->getBattery(initialCallback);
+	delay(10);
 	ttRGB->SetRGB(200, 0, 255);
 
 	/*-------------- Queues --------------*/
@@ -161,8 +166,6 @@ void vMissionFunction(void *parameter)
 
 		takeOffProcess();
 
-		xQueueSend(xLogQueue, &msg, logQueueDELAY);
-
 		Coordinate origin = routePoints->at(point_index++);
 		if (routePoints->size() == point_index)
 		{
@@ -175,7 +178,7 @@ void vMissionFunction(void *parameter)
 				vTaskDelay(missionDELAY);
 		}
 		Coordinate destination = routePoints->at(point_index);
-		ttSDK->moveRealtiveTo(origin, destination, 10, missionCallback);
+		ttSDK->moveRelativeTo(origin, destination, SPEED, moveRelativeCallback);
 	}
 }
 
@@ -196,7 +199,7 @@ void vSensorFunction(void *parameter)
 		{
 			if (xSemaphoreGive(xSensorMutex) == pdFAIL)
 			{
-				xQueueSend(xLogQueue, "Sensor function couldn't release mutex\n", 0);
+				//xQueueSend(xLogQueue, "Sensor function couldn't release mutex\n", 0);
 			}
 		}
 	}
@@ -213,7 +216,7 @@ void vDodgeFunction(void *parameter)
 		if (xSemaphoreTake(xSensorMutex, portMAX_DELAY) == pdPASS)
 		{
 			ttRGB->SetRGB(255, 0, 0);
-			xQueueSend(xLogQueue, "Interrupting current command", logQueueDELAY);
+			//xQueueSend(xLogQueue, "Interrupting current command", logQueueDELAY);
 			ttSDK->land(missionCallback);
 		}
 	}
@@ -250,22 +253,21 @@ void takeOffProcess()
 		return;
 
 	ttRGB->SetRGB(0, 0, 255);
-	ttSDK->getBattery(missionCallback);
-	ttSDK->takeOff(missionCallback);
+	ttSDK->getBattery(initialCallback);
+	ttSDK->takeOff(initialCallback);
 	isFirstTime = 0;
 }
 
 void initialCallback(char *cmd, String res)
 {
 	char msg[100];
-	snprintf(msg, sizeof(msg), "cmd: %s, res: %s\n", cmd, res.c_str());
+	snprintf(msg, sizeof(msg), "cmd: %s, res: %s - InitialCallback\n", cmd, res.c_str());
 	utils->slog(msg);
 }
 
 void missionCallback(char *cmd, String res)
 {
 	char msg[100];
-
 	if (res.indexOf("error") != -1)
 	{
 		snprintf(msg, sizeof(msg), "ERROR: %s", res);
@@ -274,5 +276,25 @@ void missionCallback(char *cmd, String res)
 	}
 
 	snprintf(msg, sizeof(msg), "cmd: %s, res: %s - MissionCallback", cmd, res.c_str());
+	xQueueSend(xLogQueue, &msg, logQueueDELAY);
+}
+
+void moveRelativeCallback(char *cmd, String res, MoveRelativeRes moveRelativeRes)
+{
+	char msg[100];
+	int16_t x = moveRelativeRes.getX();
+	int16_t y = moveRelativeRes.getY();
+	int16_t z = moveRelativeRes.getZ();
+	
+	TickType_t execTime = pdTICKS_TO_MS(moveRelativeRes.getTime()) / 1000;
+
+	float absDistance = sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2));
+	float pathFraction = SPEED * execTime / absDistance;
+
+	estimatedX = pathFraction * x;
+	estimatedY = pathFraction * y;
+	estimatedZ = pathFraction * z;
+
+	snprintf(msg, sizeof(msg), "Estimated X: %d cm, Y: %d cm, Z: %d cm, time: %d s, AbsDistace: %f, pathfraction: %f\n", estimatedX, estimatedY, estimatedZ, execTime, absDistance, pathFraction);
 	xQueueSend(xLogQueue, &msg, logQueueDELAY);
 }

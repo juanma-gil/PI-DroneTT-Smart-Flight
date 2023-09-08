@@ -27,4 +27,5 @@ public:
     void receiveRouteFromClient(WiFiClient *client);
     void parseJsonAsCoordinate(const char *jsonBuf);
     void insertUnrolledPoints(const char *unit, uint8_t scalar, int16_t plusX, int16_t plusY, int16_t plusZ);
+    
 };

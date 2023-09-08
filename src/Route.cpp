@@ -89,3 +89,4 @@ void Route::insertUnrolledPoints(const char *unit, uint8_t scalar, int16_t plusX
     for (int16_t i = 1; i <= abs(scalar); i++)
         Route::getRoute()->push_back(Coordinate((char *)unit, x + i * plusX, y + i * plusY, z + i * plusZ));
 }
+
