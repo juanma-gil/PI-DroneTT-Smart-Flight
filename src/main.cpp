@@ -33,9 +33,8 @@ RMTT_Protocol *ttSDK = RMTT_Protocol::getInstance();
 RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
 Utils *utils = Utils::getInstance();
 
-uint8_t isFirstTime = 1;
-uint16_t point_index = 0;
-uint16_t measure = 0;
+uint8_t isFirstTime = 1, dodgeTries = 0;
+uint16_t pointIndex = 0, measure = 0;
 int16_t estimatedX = 0;
 int16_t estimatedY = 0;
 int16_t estimatedZ = 0;
@@ -68,7 +67,7 @@ void setup()
 	ttRGB->Init();
 	route = route->getInstance();
 	routePoints = route->getRoute();
-	xSensorMutex = xSemaphoreCreateBinary();
+	xSensorMutex = xSemaphoreCreateBinary(); /* The semaphore is created in the 'empty' state, meaning the semaphore must first be given using the xSemaphoreGive() API function before it can subsequently be taken (obtained) using the xSemaphoreTake() function. */
 
 	Serial.begin(115200);
 	Serial1.begin(1000000, SERIAL_8N1, 23, 18);
@@ -166,8 +165,8 @@ void vMissionFunction(void *parameter)
 
 		takeOffProcess();
 
-		Coordinate origin = routePoints->at(point_index++);
-		if (routePoints->size() == point_index)
+		Coordinate origin = routePoints->at(pointIndex++);
+		if (routePoints->size() == pointIndex)
 		{
 			char msg[50];
 			sniprintf(msg, sizeof(msg), "Mission finished, landing ...");
@@ -177,7 +176,7 @@ void vMissionFunction(void *parameter)
 			while (1)
 				vTaskDelay(missionDELAY);
 		}
-		Coordinate destination = routePoints->at(point_index);
+		Coordinate destination = routePoints->at(pointIndex);
 		ttSDK->moveRelativeTo(origin, destination, SPEED, moveRelativeCallback);
 	}
 }
@@ -197,10 +196,17 @@ void vSensorFunction(void *parameter)
 		}
 		if (measure < 300)
 		{
+			ttRGB->SetRGB(255, 0, 0);
+			vTaskSuspend(missionTaskHandle);
 			if (xSemaphoreGive(xSensorMutex) == pdFAIL)
 			{
-				//xQueueSend(xLogQueue, "Sensor function couldn't release mutex\n", 0);
+				xQueueSend(xLogQueue, "Sensor function couldn't release mutex\n", 0);
 			}
+		}
+		else if (dodgeTries != 0)
+		{
+			dodgeTries = 0;
+			vTaskResume(missionTaskHandle);
 		}
 	}
 }
@@ -210,14 +216,28 @@ void vDodgeFunction(void *parameter)
 	char msg[100];
 	for (;;)
 	{
-		vTaskDelay(dodgeDELAY);
-		// TODO: cuando se decida esquivar tener en cuenta que habría que insertar en la ruta el
-		// punto de esquive xq sino no va a poder hacer el moveRelative,luego volver a la ruta original
 		if (xSemaphoreTake(xSensorMutex, portMAX_DELAY) == pdPASS)
 		{
-			ttRGB->SetRGB(255, 0, 0);
-			//xQueueSend(xLogQueue, "Interrupting current command", logQueueDELAY);
-			ttSDK->land(missionCallback);
+			ttSDK->stop(missionCallback);
+			vTaskSuspend(sensorTaskHandle);
+			dodgeTries++;
+			ttRGB->SetRGB(50, 255, 50);
+			Coordinate lastPoint = routePoints->at(pointIndex - 1);
+			int16_t xCoord = lastPoint.getX() + estimatedX;
+			int16_t yCoord = lastPoint.getY() + estimatedY;
+			int16_t zCoord = lastPoint.getZ() + estimatedZ;
+			Coordinate origin = Coordinate("cm", xCoord, yCoord, zCoord);
+			Coordinate destination = Coordinate("cm", xCoord, yCoord, zCoord + 40);
+			snprintf(msg, sizeof(msg), "last point: %d, %d, %d\nxCoord: %d, yCoord: %d, zCoord: %d", lastPoint.getX(), lastPoint.getY(), lastPoint.getZ(), xCoord, yCoord, zCoord);
+			xQueueSend(xLogQueue, &msg, logQueueDELAY);
+			ttSDK->moveRelativeTo(origin, destination, SPEED, moveRelativeCallback);
+			routePoints->emplace(routePoints->begin() + pointIndex, destination);
+			pointIndex++;
+			vTaskResume(sensorTaskHandle);
+		}
+		else
+		{
+			xQueueSend(xLogQueue, "Dodge function couldn't take mutex\n", 0);
 		}
 	}
 }
@@ -272,7 +292,7 @@ void missionCallback(char *cmd, String res)
 	{
 		snprintf(msg, sizeof(msg), "ERROR: %s", res);
 		xQueueSend(xLogQueue, &msg, logQueueDELAY);
-		ttSDK->land();
+		// ttSDK->land();
 	}
 
 	snprintf(msg, sizeof(msg), "cmd: %s, res: %s - MissionCallback", cmd, res.c_str());
@@ -285,7 +305,7 @@ void moveRelativeCallback(char *cmd, String res, MoveRelativeRes moveRelativeRes
 	int16_t x = moveRelativeRes.getX();
 	int16_t y = moveRelativeRes.getY();
 	int16_t z = moveRelativeRes.getZ();
-	
+
 	TickType_t execTime = pdTICKS_TO_MS(moveRelativeRes.getTime()) / 1000;
 
 	float absDistance = sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2));
