@@ -10,19 +10,26 @@
 #include "../include/Utils.h"
 
 #define PORT 5001
-#define sendCmdDELAY (pdMS_TO_TICKS(100))
-#define recvCmdDELAY (pdMS_TO_TICKS(100))
-#define dodgeDELAY (pdMS_TO_TICKS(10))
-#define logDELAY (pdMS_TO_TICKS(100))
-#define logQueueDELAY (pdMS_TO_TICKS(50))
+
+/* Measures in cm */
+#define MAX_MEASURE 1000
+#define UP_DODGE 50
+#define DOWN_DODGE 50
+#define LEFT_DODGE 50
+#define RIGHT_DODGE 50
+
+#define missionDELAY (pdMS_TO_TICKS(100))
+#define logDELAY (pdMS_TO_TICKS(500))
+
+#define logQueueDELAY (pdMS_TO_TICKS(500))
 
 #define logQueueSIZE 5
 #define logItemSIZE (UBaseType_t)100 * (sizeof(char)) // 100 chars
 
-/*-------------- Global Variables --------------*/
+#define SSID "LCD"
+#define PASSWORD "1cdunc0rd0ba"
 
-const char *ssid = "LCD";
-const char *password = "1cdunc0rd0ba";
+/*-------------- Global Variables --------------*/
 
 WiFiServer wifiServer(PORT);
 WiFiClient client;
@@ -32,8 +39,7 @@ RMTT_Protocol *ttSDK = RMTT_Protocol::getInstance();
 RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
 Utils *utils = Utils::getInstance();
 
-uint8_t isFirstTime = 1;
-uint16_t point_index = 0;
+uint8_t isFirstTime = 1, point_index = 0;
 uint16_t measure = 0;
 
 Route *route = Route::getInstance();
@@ -41,227 +47,200 @@ std::vector<Coordinate> *routePoints;
 
 UBaseType_t uxHighWaterMark;
 
-TaskHandle_t sensorTaskHandle, sendCmdTaskHandle, recvCmdTaskHandle, loggerTaskHandle;
+TaskHandle_t missionTaskHandle, loggerTaskHandle;
 
 QueueHandle_t xLogQueue = NULL;
-QueueHandle_t xSendCmdQueue = NULL;
-QueueHandle_t xRecvCmdQueue = NULL;
 
 SemaphoreHandle_t xSensorMutex = NULL;
 int count;
 
 /*-------------- Fuction Declaration --------------*/
 
-void vSendCmdTask(void *parameter);
-void vRecvCmdTask(void *parameter);
-void vLogFunction(void *parameter);
+void vMissionTask(void *parameter);
+void vLogTask(void *parameter);
+
+void initialCallback(char *cmd, String res);
 void missionCallback(char *cmd, String res);
+
+boolean tofSense(std::function<void()> callback);
+void dodgeFun();
 
 /*-------------- Fuction Implementation --------------*/
 
 void setup()
 {
-    ttRGB->Init();
-    route = route->getInstance();
-    routePoints = route->getRoute();
-    xSensorMutex = xSemaphoreCreateBinary();
-    count = 0;
+	routePoints = route->getRoute();
+	xSensorMutex = xSemaphoreCreateBinary();
+	count = 0;
 
-    Serial.begin(115200);
-    Serial1.begin(1000000, SERIAL_8N1, 23, 18);
+	Serial.begin(115200);
+	Serial1.begin(1000000, SERIAL_8N1, 23, 18);
 
-    /* Initialize sensor */
-    Wire.begin(27, 26);
-    Wire.setClock(100000);
-    tt_sensor.SetTimeout(500);
-    if (!tt_sensor.Init())
-    {
-        utils->slog("Failed to detect and initialize sensor!");
-        while (1)
-        {
-            delay(10);
-        }
-    }
+	/* Initialize sensor */
+	Wire.begin(27, 26);
+	Wire.setClock(100000);
+	tt_sensor.SetTimeout(500);
+	if (!tt_sensor.Init())
+	{
+		utils->slog("Failed to detect and initialize sensor!");
+		while (1)
+		{
+			vTaskDelay(pdMS_TO_TICKS(10));
+		}
+	}
 
-    /*---------------------------------------------------------*/
+	/*---------------------------------------------------------*/
 
-    WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED)
-    {
-        delay(1000);
-        utils->slog("Connecting to WiFi..");
-    }
+	WiFi.begin(SSID, PASSWORD);
+	while (WiFi.status() != WL_CONNECTED)
+	{
+		vTaskDelay(pdMS_TO_TICKS(1000));
+		utils->slog("Connecting to WiFi..");
+	}
 
-    utils->slog("Connected to the WiFi network");
-    Serial.println(WiFi.localIP());
-    ttRGB->SetRGB(200, 255, 0);
-    wifiServer.begin();
+	ttRGB->Init();
+	utils->slog("Connected to the WiFi network");
+	Serial.println(WiFi.localIP());
+	ttRGB->SetRGB(200, 255, 0);
+	wifiServer.begin();
 
-    while (!client)
-    {
-        client = wifiServer.available();
-        delay(10);
-    };
+	while (!client)
+	{
+		client = wifiServer.available();
+		vTaskDelay(pdMS_TO_TICKS(10));
+	};
 
-    utils->slog("Client connected");
+	utils->slog("Client connected");
 
-    if (xSensorMutex == NULL)
-    {
-        client.write("Mutex creation has FAILED");
-    }
+	if (xSensorMutex == NULL)
+	{
+		client.write("Mutex creation has FAILED");
+	}
 
-    while (routePoints->empty())
-    {
-        delay(10);
-        route->receiveRouteFromClient(&client);
-    }
+	while (routePoints->empty())
+	{
+		delay(10);
+		route->receiveRouteFromClient(&client);
+	}
 
-    Serial1.flush();
-    ttSDK->sdkOn();
-    ttRGB->SetRGB(200, 0, 255);
+	Serial1.flush();
+	ttSDK->sdkOn();
+	ttRGB->SetRGB(200, 0, 255);
 
-    /*-------------- Queues --------------*/
+	/*-------------- Queues --------------*/
 
-    xLogQueue = xQueueCreate(logQueueSIZE, logItemSIZE);
-    if (xLogQueue == NULL)
-    {
-        utils->slog("Queue creation has FAILED");
-    }
+	xLogQueue = xQueueCreate(logQueueSIZE, logItemSIZE);
+	if (xLogQueue == NULL)
+	{
+		utils->slog("Queue creation has FAILED");
+	}
 
-    xSendCmdQueue = xQueueCreate(logQueueSIZE, logItemSIZE);
-    if (xSendCmdQueue == NULL)
-    {
-        utils->slog("Queue creation has FAILED");
-    }
+	/*-------------- Tasks  --------------*/
 
-    xRecvCmdQueue = xQueueCreate(logQueueSIZE, logItemSIZE);
-    if (xRecvCmdQueue == NULL)
-    {
-        utils->slog("Queue creation has FAILED");
-    }
-
-    /*-------------- Tasks  --------------*/
-
-    if (xTaskCreatePinnedToCore(vLogFunction, "Logger", configMINIMAL_STACK_SIZE * 4, NULL, 20, &loggerTaskHandle, 0) != pdPASS)
-    {
-        utils->slog("Failed to create Logger task");
-    }
-    if (xTaskCreatePinnedToCore(vRecvCmdTask, "ReceiveCmd", configMINIMAL_STACK_SIZE * 4, NULL, 20, &recvCmdTaskHandle, 1) != pdPASS)
-    {
-        utils->slog("Failed to create ReceiveCmd task");
-    };
-    if (xTaskCreatePinnedToCore(vSendCmdTask, "SendCmd", configMINIMAL_STACK_SIZE * 5, NULL, 20, &sendCmdTaskHandle, 0) != pdPASS)
-    {
-        utils->slog("Failed to create SendCmd task");
-    };
+	if (xTaskCreatePinnedToCore(vLogTask, "Logger", configMINIMAL_STACK_SIZE * 4, NULL, 5, &loggerTaskHandle, 0) != pdPASS)
+	{
+		utils->slog("Failed to create Logger task");
+	}
+	if (xTaskCreatePinnedToCore(vMissionTask, "Mission", configMINIMAL_STACK_SIZE * 4, NULL, 20, &missionTaskHandle, 1) != pdPASS)
+	{
+		utils->slog("Failed to create Mission task");
+	};
 }
 
 void loop()
 {
-    char msg[100];
-    delay(3000);
-    sprintf(msg, "[TELLO] Re%02x%02x %s", ++count, 1, "takeoff");
-    if (xQueueSend(xSendCmdQueue, msg, 10) == pdFAIL)
-    {
-        utils->slog("Loop fail to send motoron");
-    }
-    delay(10000);
-    sprintf(msg, "[TELLO] Re%02x%02x %s",  ++count, 1, "go 300 0 0 20");
-    if (xQueueSend(xSendCmdQueue, msg, 10) == pdFAIL)
-    {
-        utils->slog("Loop fail to send go");
-    }
-    delay(8000);
-    sprintf(msg, "[TELLO] Re%02x%02x %s",  ++count, 1, "stop");
-    if (xQueueSend(xSendCmdQueue, msg, 10) == pdFAIL)
-    {
-        utils->slog("Loop fail to send up 40");
-    }
-    delay(2000);
-    sprintf(msg, "[TELLO] Re%02x%02x %s",  ++count, 1, "up 40");
-    if (xQueueSend(xSendCmdQueue, msg, 10) == pdFAIL)
-    {
-        utils->slog("Loop fail to send up 40");
-    }
-    delay(4000);
-    sprintf(msg, "[TELLO] Re%02x%02x %s",  ++count, 1, "land");
-    if (xQueueSend(xSendCmdQueue, msg, 10) == pdFAIL)
-    {
-        utils->slog("Loop fail to send land");
-    }
+	vTaskDelete(NULL);
 }
 
-void vSendCmdTask(void *parameter)
+void vMissionTask(void *parameter)
 {
-    char msg[100];
-    for (;;)
-    {
-        vTaskDelay(sendCmdDELAY);
-        if (xQueueReceive(xSendCmdQueue, &msg, portMAX_DELAY) == pdTRUE)
-        {
-            Serial1.printf(msg);
-            sprintf(msg, "%s", msg);
-            xQueueSend(xLogQueue, &msg, logQueueDELAY);
-        }
-    }
+	char msg[100];
+
+	ttRGB->SetRGB(0, 0, 255);
+	ttSDK->getBattery(missionCallback);
+	ttSDK->takeOff(missionCallback);
+
+	for (;;)
+	{
+		vTaskDelay(missionDELAY);
+		xQueueSend(xLogQueue, &msg, logQueueDELAY);
+
+		Coordinate origin = routePoints->at(point_index++);
+		if (routePoints->size() == point_index)
+		{
+			char msg[50];
+			sniprintf(msg, sizeof(msg), "Mission finished, landing ...");
+			xQueueSend(xLogQueue, &msg, logQueueDELAY);
+			ttSDK->land();
+			ttRGB->SetRGB(0, 255, 0);
+			while (1)
+				vTaskDelay(missionDELAY);
+		}
+		Coordinate destination = routePoints->at(point_index);
+		ttSDK->moveRelativeTo(origin, destination, 20, missionCallback);
+		tofSense(dodgeFun);
+	}
 }
 
-void vRecvCmdTask(void *parameter)
+void vLogTask(void *parameter)
 {
-    String rsp = "";
-    char msg[100];
-    
-    for (;;)
-    {
-        vTaskDelay(recvCmdDELAY);
-        while (Serial1.available())
-        {
-            // Serial.printf("Waiting for response\n");
-            rsp += String(char(Serial1.read()));
-        }
-        if(rsp.length() == 0) continue;
-        if (xQueueSend(xLogQueue, rsp.c_str(), logQueueDELAY) == pdFAIL)
-        {
-            utils->slog("RecvCmdTask: Fail to send msg to queue");
-        }
-        else
-        {
-            sprintf(msg, "Drone response: %s\n", rsp.c_str());
-            utils->slog(msg);
-        }
-        rsp = "";
-    }
+	char msg[500];
+	for (;;)
+	{
+		vTaskDelay(logDELAY);
+		if (xQueueReceive(xLogQueue, &msg, logDELAY) == pdTRUE)
+		{
+			utils->slog(msg);
+			client.write(msg);
+		}
+	}
 }
 
-void vLogFunction(void *parameter)
+boolean tofSense(std::function<void()> callback)
 {
-    char msg[500];
-    for (;;)
-    {
-        vTaskDelay(logDELAY);
-        if (xQueueReceive(xLogQueue, &msg, portMAX_DELAY) == pdTRUE)
-        {
-            utils->slog(msg);
-            client.write(msg);
-        }
-        else
-        {
-            utils->slog("LogFunction: Empty Queue");
-        }
-    }
+	char msg[50];
+	measure = tt_sensor.ReadRangeSingleMillimeters(); // Performs a single-shot range measurement and returns the reading in millimeters
+	if (tt_sensor.TimeoutOccurred())
+	{
+		xQueueSend(xLogQueue, "Sensor timeout\n", 0);
+		return NULL;
+	}
+
+	boolean obstacleDetected = measure < MAX_MEASURE;
+	if (obstacleDetected)
+		callback();
+
+	sniprintf(msg, sizeof(msg), "MAX_MEASURE = %d | Current measure: %d\n", MAX_MEASURE, measure);
+	xQueueSend(xLogQueue, &msg, logQueueDELAY);
+
+	return obstacleDetected;
+}
+
+void dodgeFun()
+{
+	ttRGB->SetRGB(255, 0, 0);
+	ttSDK->up(UP_DODGE, missionCallback);
+	ttRGB->SetRGB(0, 0, 255);
+}
+
+void initialCallback(char *cmd, String res)
+{
+	char msg[100];
+	snprintf(msg, sizeof(msg), "InitialCallback - cmd: %s, res: %s\n", cmd, res.c_str());
+	utils->slog(msg);
 }
 
 void missionCallback(char *cmd, String res)
 {
-    char msg[500];
+	char msg[100];
 
-    if (res.indexOf("error") != -1)
-    {
-        snprintf(msg, sizeof(msg), "ERROR: %s", res);
-        xQueueSend(xLogQueue, &msg, logQueueDELAY);
-        ttSDK->land();
-    }
+	if (res.indexOf("error") != -1)
+	{
+		snprintf(msg, sizeof(msg), "ERROR: %s", res);
+		xQueueSend(xLogQueue, &msg, logQueueDELAY);
+		ttSDK->land();
+	}
 
-    snprintf(msg, sizeof(msg), "cmd: %s, res: %s - MissionCallback", cmd, res.c_str());
-    xQueueSend(xLogQueue, &msg, logQueueDELAY);
+	snprintf(msg, sizeof(msg), "MissionCallback - cmd: %s, res: %s", cmd, res.c_str());
+	xQueueSend(xLogQueue, &msg, logQueueDELAY);
 }
