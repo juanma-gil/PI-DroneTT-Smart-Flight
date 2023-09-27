@@ -1,77 +1,10 @@
-#include <iostream>
-#include <cstdlib>
-#include <cstring>
-#include <unistd.h>
-#include <Arduino.h>
-#include <WiFi.h>
-#include <Wire.h>
-#include <RMTT_Libs.h>
-#include "../include/Route.h"
-#include "../include/Utils.h"
-
-#define PORT 5001
-
-/* Measures in cm */
-#define MAX_MEASURE 1000
-#define UP_DODGE 50
-#define DOWN_DODGE 50
-#define LEFT_DODGE 50
-#define RIGHT_DODGE 50
-
-#define missionDELAY (pdMS_TO_TICKS(100))
-#define logDELAY (pdMS_TO_TICKS(500))
-
-#define logQueueDELAY (pdMS_TO_TICKS(500))
-
-#define logQueueSIZE 5
-#define logItemSIZE (UBaseType_t)100 * (sizeof(char)) // 100 chars
-
-#define SSID "LCD"
-#define PASSWORD "1cdunc0rd0ba"
-
-/*-------------- Global Variables --------------*/
-
-WiFiServer wifiServer(PORT);
-WiFiClient client;
-
-RMTT_TOF tt_sensor;
-RMTT_Protocol *ttSDK = RMTT_Protocol::getInstance();
-RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
-Utils *utils = Utils::getInstance();
-
-uint8_t isFirstTime = 1, point_index = 0;
-uint16_t measure = 0;
-
-Route *route = Route::getInstance();
-std::vector<Coordinate> *routePoints;
-
-UBaseType_t uxHighWaterMark;
-
-TaskHandle_t missionTaskHandle, loggerTaskHandle;
-
-QueueHandle_t xLogQueue = NULL;
-
-SemaphoreHandle_t xSensorMutex = NULL;
-int count;
-
-/*-------------- Fuction Declaration --------------*/
-
-void vMissionTask(void *parameter);
-void vLogTask(void *parameter);
-
-void initialCallback(char *cmd, String res);
-void missionCallback(char *cmd, String res);
-
-boolean tofSense(std::function<void()> callback);
-void dodgeFun();
+#include "../include/main.h"
 
 /*-------------- Fuction Implementation --------------*/
 
 void setup()
 {
 	routePoints = route->getRoute();
-	xSensorMutex = xSemaphoreCreateBinary();
-	count = 0;
 
 	Serial.begin(115200);
 	Serial1.begin(1000000, SERIAL_8N1, 23, 18);
@@ -112,11 +45,6 @@ void setup()
 
 	utils->slog("Client connected");
 
-	if (xSensorMutex == NULL)
-	{
-		client.write("Mutex creation has FAILED");
-	}
-
 	while (routePoints->empty())
 	{
 		delay(10);
@@ -125,7 +53,6 @@ void setup()
 
 	Serial1.flush();
 	ttSDK->sdkOn();
-	ttRGB->SetRGB(200, 0, 255);
 
 	/*-------------- Queues --------------*/
 
@@ -178,7 +105,9 @@ void vMissionTask(void *parameter)
 		}
 		Coordinate destination = routePoints->at(point_index);
 		ttSDK->moveRelativeTo(origin, destination, 20, missionCallback);
-		tofSense(dodgeFun);
+		while (tofSense(dodgeFun))
+			;
+		tries = 0;
 	}
 }
 
@@ -198,6 +127,8 @@ void vLogTask(void *parameter)
 
 boolean tofSense(std::function<void()> callback)
 {
+	printRoutePoints();
+
 	char msg[50];
 	measure = tt_sensor.ReadRangeSingleMillimeters(); // Performs a single-shot range measurement and returns the reading in millimeters
 	if (tt_sensor.TimeoutOccurred())
@@ -218,8 +149,47 @@ boolean tofSense(std::function<void()> callback)
 
 void dodgeFun()
 {
-	ttRGB->SetRGB(255, 0, 0);
-	ttSDK->up(UP_DODGE, missionCallback);
+	char msg[20];
+	ttRGB->SetRGB(200, 255, 0);
+	Coordinate lastPoint = routePoints->at(point_index), newPoint;
+	uint16_t movement;
+	switch (tries++)
+	{
+	case 0 ... 1:
+		ttSDK->up(UP_DODGE, missionCallback);
+		newPoint = Coordinate("cm", lastPoint.getX(), lastPoint.getY(), lastPoint.getZ() + UP_DODGE);
+		break;
+	case 2:
+		movement = UP_DODGE * 2 + DOWN_DODGE;
+		ttSDK->down(movement, missionCallback);
+		newPoint = Coordinate("cm", lastPoint.getX(), lastPoint.getY(), lastPoint.getZ() - movement);
+		break;
+	case 3:
+		ttSDK->up(DOWN_DODGE, missionCallback);
+		ttSDK->left(LEFT_DODGE, missionCallback);
+		newPoint = Coordinate("cm", lastPoint.getX(), lastPoint.getY() + LEFT_DODGE, lastPoint.getZ() + UP_DODGE);
+		break;
+	case 4:
+		ttSDK->left(LEFT_DODGE, missionCallback);
+		newPoint = Coordinate("cm", lastPoint.getX(), lastPoint.getY() + LEFT_DODGE, lastPoint.getZ());
+		break;
+	case 5:
+		movement = LEFT_DODGE * 2 + RIGHT_DODGE;
+		ttSDK->right(movement, missionCallback);
+		newPoint = Coordinate("cm", lastPoint.getX(), lastPoint.getY() - movement, lastPoint.getZ());
+		break;
+	case 6:
+		ttSDK->right(RIGHT_DODGE, missionCallback);
+		newPoint = Coordinate("cm", lastPoint.getX(), lastPoint.getY() - RIGHT_DODGE, lastPoint.getZ());
+		break;
+	default:
+		ttRGB->SetRGB(255, 0, 0);
+		ttSDK->land();
+		break;
+	}
+	routePoints->emplace(routePoints->begin() + ++point_index, newPoint);
+	sniprintf(msg, sizeof(msg), "Tries: %d\n", tries);
+	xQueueSend(xLogQueue, &msg, logQueueDELAY);
 	ttRGB->SetRGB(0, 0, 255);
 }
 
@@ -243,4 +213,19 @@ void missionCallback(char *cmd, String res)
 
 	snprintf(msg, sizeof(msg), "MissionCallback - cmd: %s, res: %s", cmd, res.c_str());
 	xQueueSend(xLogQueue, &msg, logQueueDELAY);
+}
+
+void printRoutePoints()
+{
+	char msg[1000];
+
+	for (int i = 0; i < routePoints->size(); i++)
+	{
+		Coordinate coord = routePoints->at(i);
+		char coordStr[100];
+		snprintf(coordStr, sizeof(coordStr), "x = %d, y = %d, z = %d\n", coord.getX(), coord.getY(), coord.getZ());
+		strcat(msg, coordStr);
+	}
+	Serial.println(msg);
+	client.println(msg);
 }
