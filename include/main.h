@@ -58,8 +58,5 @@ void vLogTask(void *parameter);
 
 void initialCallback(char *cmd, String res);
 void missionCallback(char *cmd, String res);
-
-void printRoutePoints();
-
 boolean tofSense(std::function<void()> callback);
 void dodgeFun();

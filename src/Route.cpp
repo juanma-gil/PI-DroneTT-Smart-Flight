@@ -24,7 +24,6 @@ void Route::receiveRouteFromClient(WiFiClient *client)
     {
         json = client->readStringUntil('\n');
         json.trim(); // Remove the trailing newline character
-        client->write("Received JSON");
         return parseJsonAsCoordinate(json.c_str());
     }
 }

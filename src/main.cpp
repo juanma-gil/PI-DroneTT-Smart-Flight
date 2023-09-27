@@ -50,7 +50,7 @@ void setup()
 		delay(10);
 		route->receiveRouteFromClient(&client);
 	}
-
+	client.write("Received JSON");
 	Serial1.flush();
 	ttSDK->sdkOn();
 
@@ -90,24 +90,28 @@ void vMissionTask(void *parameter)
 	for (;;)
 	{
 		vTaskDelay(missionDELAY);
-		xQueueSend(xLogQueue, &msg, logQueueDELAY);
 
-		Coordinate origin = routePoints->at(point_index++);
-		if (routePoints->size() == point_index)
-		{
-			char msg[50];
-			sniprintf(msg, sizeof(msg), "Mission finished, landing ...");
-			xQueueSend(xLogQueue, &msg, logQueueDELAY);
-			ttSDK->land();
-			ttRGB->SetRGB(0, 255, 0);
-			while (1)
-				vTaskDelay(missionDELAY);
-		}
-		Coordinate destination = routePoints->at(point_index);
-		ttSDK->moveRelativeTo(origin, destination, 20, missionCallback);
 		while (tofSense(dodgeFun))
-			;
+		{
+			delay(2000);
+		}
+		point_index += tries;
 		tries = 0;
+		Coordinate origin = routePoints->at(point_index);
+
+		if (routePoints->size() == ++point_index)
+		{
+			ttRGB->SetRGB(0, 255, 0);
+			ttSDK->land();
+			xQueueSend(xLogQueue, "Mission completed\n", 0);
+			while (true)
+				;
+		}
+
+		Coordinate destination = routePoints->at(point_index);
+
+		Serial.printf("Route point: %d\n", point_index);
+		ttSDK->moveRelativeTo(origin, destination, 20, missionCallback);
 	}
 }
 
@@ -127,8 +131,6 @@ void vLogTask(void *parameter)
 
 boolean tofSense(std::function<void()> callback)
 {
-	printRoutePoints();
-
 	char msg[50];
 	measure = tt_sensor.ReadRangeSingleMillimeters(); // Performs a single-shot range measurement and returns the reading in millimeters
 	if (tt_sensor.TimeoutOccurred())
@@ -141,18 +143,17 @@ boolean tofSense(std::function<void()> callback)
 	if (obstacleDetected)
 		callback();
 
-	sniprintf(msg, sizeof(msg), "MAX_MEASURE = %d | Current measure: %d\n", MAX_MEASURE, measure);
-	xQueueSend(xLogQueue, &msg, logQueueDELAY);
-
 	return obstacleDetected;
 }
 
 void dodgeFun()
 {
-	char msg[20];
+	char msg[100];
 	ttRGB->SetRGB(200, 255, 0);
-	Coordinate lastPoint = routePoints->at(point_index), newPoint;
+	Serial.print("Dodge function\n");
+	Coordinate lastPoint = routePoints->at(point_index + tries), newPoint;
 	uint16_t movement;
+	
 	switch (tries++)
 	{
 	case 0 ... 1:
@@ -187,9 +188,7 @@ void dodgeFun()
 		ttSDK->land();
 		break;
 	}
-	routePoints->emplace(routePoints->begin() + ++point_index, newPoint);
-	sniprintf(msg, sizeof(msg), "Tries: %d\n", tries);
-	xQueueSend(xLogQueue, &msg, logQueueDELAY);
+	routePoints->emplace(routePoints->begin() + point_index+tries, newPoint);
 	ttRGB->SetRGB(0, 0, 255);
 }
 
@@ -213,19 +212,4 @@ void missionCallback(char *cmd, String res)
 
 	snprintf(msg, sizeof(msg), "MissionCallback - cmd: %s, res: %s", cmd, res.c_str());
 	xQueueSend(xLogQueue, &msg, logQueueDELAY);
-}
-
-void printRoutePoints()
-{
-	char msg[1000];
-
-	for (int i = 0; i < routePoints->size(); i++)
-	{
-		Coordinate coord = routePoints->at(i);
-		char coordStr[100];
-		snprintf(coordStr, sizeof(coordStr), "x = %d, y = %d, z = %d\n", coord.getX(), coord.getY(), coord.getZ());
-		strcat(msg, coordStr);
-	}
-	Serial.println(msg);
-	client.println(msg);
 }
