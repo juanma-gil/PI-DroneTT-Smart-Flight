@@ -54,24 +54,11 @@ void setup()
 
 	wifiServer.begin();
 
-	while (routePoints->empty())
-	{
-		client = wifiServer.available();
-		if (client)
-		{
-			route->receiveRouteFromClient(&client);
-		}
-	}
+	while (!client.connected())
+		;
 
-	ttRGB->SetRGB(200, 0, 255);
-
-	delay(500);
-
-	client.write("JSON ok. Starting mission");
-
-	ttSDK->startUntilControl();
-
-	ttSDK->getBattery(defaultCallback);
+	ttSDK->sdkOn();
+	ttSDK->getBattery(missionCallback);
 
 	delay(1000);
 
@@ -81,28 +68,6 @@ void setup()
 void loop()
 {
 
-	Coordinate origin = routePoints->at(point_index++);
-	if (routePoints->size() == point_index)
-	{
-		char msg[50];
-		sniprintf(msg, sizeof(msg), "Mission finished, landing ...");
-		ttSDK->land();
-		ttRGB->SetRGB(0, 255, 0);
-		while (1)
-			;
-	}
-	Coordinate destination = routePoints->at(point_index);
-	ttSDK->moveRealtiveTo(origin, destination, 10, missionCallback);
-}
-
-void defaultCallback(char *cmd, String res)
-{
-	if (client.connected())
-	{
-		char msg[50];
-		snprintf(msg, sizeof(msg), "cmd: %s, res: %s\n", cmd, res.c_str());
-		client.write(msg);
-	}
 }
 
 void missionCallback(char *cmd, String res)
@@ -113,13 +78,5 @@ void missionCallback(char *cmd, String res)
 	{
 		snprintf(msg, sizeof(msg), "cmd: %s, res: %s\n", cmd, res.c_str());
 		client.write(msg);
-	}
-
-	if (res.indexOf("ok") == -1)
-	{
-		snprintf(msg, sizeof(msg), "ERROR: landing ...\n");
-		client.write(msg);
-		ttSDK->land();
-		ttRGB->SetRGB(255, 0, 0);
 	}
 }
