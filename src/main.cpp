@@ -32,14 +32,9 @@ void missionCallback(char *cmd, String res);
 
 void setup()
 {
-	ttRGB->Init();
-	route = route->getInstance();
-	routePoints = route->getRoute();
 	Serial.begin(115200);
 	Serial1.begin(1000000, SERIAL_8N1, 23, 18);
-
-	delay(1000);
-
+	delay(100);
 	WiFi.begin(ssid, password);
 
 	while (WiFi.status() != WL_CONNECTED)
@@ -48,26 +43,28 @@ void setup()
 		Serial.println("Connecting to WiFi..");
 	}
 
-	Serial.println("Connected to the WiFi network");
-	Serial.println(WiFi.localIP());
-	ttRGB->SetRGB(200, 255, 0);
-
 	wifiServer.begin();
+
+	while (!client)
+	{
+		client = wifiServer.available();
+		vTaskDelay(pdMS_TO_TICKS(10));
+	};
 
 	while (!client.connected())
 		;
 
 	ttSDK->sdkOn();
-	ttSDK->getBattery(missionCallback);
-
-	delay(1000);
 
 	ttSDK->takeOff(missionCallback);
+
+	delay(10000);
+
+	ttSDK->land(missionCallback);
 }
 
 void loop()
 {
-
 }
 
 void missionCallback(char *cmd, String res)
