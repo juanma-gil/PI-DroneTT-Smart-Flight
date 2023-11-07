@@ -92,9 +92,7 @@ void vMissionTask(void *parameter)
 		vTaskDelay(missionDELAY);
 
 		while (tofSense(dodgeFun))
-		{
-			delay(2000);
-		}
+			;
 		point_index += tries;
 		tries = 0;
 		Coordinate origin = routePoints->at(point_index);
@@ -153,7 +151,7 @@ void dodgeFun()
 	Serial.print("Dodge function\n");
 	Coordinate lastPoint = routePoints->at(point_index + tries), newPoint;
 	uint16_t movement;
-	
+
 	switch (tries++)
 	{
 	case 0 ... 1:
@@ -188,7 +186,7 @@ void dodgeFun()
 		ttSDK->land();
 		break;
 	}
-	routePoints->emplace(routePoints->begin() + point_index+tries, newPoint);
+	routePoints->emplace(routePoints->begin() + point_index + tries, newPoint);
 	ttRGB->SetRGB(0, 0, 255);
 }
 
