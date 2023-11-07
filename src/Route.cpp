@@ -17,25 +17,21 @@ Route *Route::getInstance()
 
 void Route::receiveRouteFromClient(WiFiClient *client)
 {
-    while (client->connected())
+    RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
+    ttRGB->SetRGB(0, 255, 0);
+    String json;
+    if (client->available() > 0)
     {
-        RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
-        ttRGB->SetRGB(0, 255, 0);
-        while (client->available() > 0)
-        {
-            String json = client->readStringUntil('\n');
-            json.trim(); // Remove the trailing newline character
-            client->write("Received JSON");
-            parseJsonAsCoordinate(json.c_str());
-            return;
-        }
+        json = client->readStringUntil('\n');
+        json.trim(); // Remove the trailing newline character
+        return parseJsonAsCoordinate(json.c_str());
     }
 }
 
 void Route::parseJsonAsCoordinate(const char *jsonBuf)
 {
     std::vector<Coordinate> *route = Route::getInstance()->getRoute();
-    int i = -1;
+    u_int8_t i = -1;
     StaticJsonDocument<JSON_BUF_SIZE> doc;
     DeserializationError error = deserializeJson(doc, jsonBuf);
     if (error)
@@ -54,19 +50,24 @@ void Route::parseJsonAsCoordinate(const char *jsonBuf)
         int16_t y = point["y"];
         int16_t z = point["z"];
 
-        Coordinate p1 = route->empty() ? Coordinate((char *)unit, 0, 0, 0) : route->at(++i);
-        Coordinate p2 = Coordinate((char *)unit, x, y, z);
+        Coordinate p1;
 
-        char msg[50];
-        snprintf(msg, 50, "p1: %d, %d, %d, p2: %d, %d, %d", p1.getX(), p1.getY(), p1.getZ(), p2.getX(), p2.getY(), p2.getZ());
-        Serial.println(msg);
+        if (route->empty())
+        {
+            p1 = Coordinate((char *)unit, 0, 0, 0);
+            route->push_back(p1);
+        }
+        else
+        {
+            p1 = route->at(++i);
+        }
+        Coordinate p2 = Coordinate((char *)unit, x, y, z);
 
         int16_t xDistance = abs(p1.getX() - p2.getX());
         int16_t yDistance = abs(p1.getY() - p2.getY());
         int16_t zDistance = abs(p1.getZ() - p2.getZ());
-        snprintf(msg, 50, "xDistance: %d, yDistance: %d, zDistance: %d", xDistance, yDistance, zDistance);
-        Serial.println(msg);
-        if (xDistance >= MAX_DISTANCE || yDistance >= MAX_DISTANCE || zDistance >= MAX_DISTANCE ||
+
+        if (!route->empty() && xDistance >= MAX_DISTANCE || yDistance >= MAX_DISTANCE || zDistance >= MAX_DISTANCE ||
             xDistance <= MIN_DISTANCE || yDistance <= MIN_DISTANCE || zDistance <= MIN_DISTANCE)
         {
             uint8_t scalar = Coordinate::getPointScalar(xDistance, yDistance, zDistance);
@@ -76,24 +77,21 @@ void Route::parseJsonAsCoordinate(const char *jsonBuf)
             int16_t plusZ = z / scalar;
 
             insertUnrolledPoints(unit, scalar, plusX, plusY, plusZ);
+            continue;
         }
-
-        Coordinate coordinate = Coordinate((char *)unit, x, y, z);
-
-        route->push_back(coordinate);
+        route->push_back(p2);
     }
-    Coordinate::printPoints(*route);
+    // Coordinate::printPoints(*route);
 }
 
 void Route::insertUnrolledPoints(const char *unit, uint8_t scalar, int16_t plusX, int16_t plusY, int16_t plusZ)
 {
     Route *routeInstance = Route::getInstance();
     Coordinate lastPoint = route->back();
-
     int16_t x = lastPoint.getX();
     int16_t y = lastPoint.getY();
     int16_t z = lastPoint.getZ();
-
-    for (int16_t i = 1; i <= abs(scalar); i++)
-        Route::getRoute()->push_back(Coordinate((char *)unit, x + i * plusX, y + i * plusY, z + i * plusZ));
+    Serial.printf("scalar: %d, plusX: %d, plusY: %d, plusZ: %d\n", scalar, plusX, plusY, plusZ);
+    for (int16_t i = 1; i <= scalar; i++)
+        routeInstance->getRoute()->push_back(Coordinate((char *)unit, x + i * plusX, y + i * plusY, z + i * plusZ));
 }

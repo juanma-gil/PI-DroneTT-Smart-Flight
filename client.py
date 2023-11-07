@@ -9,7 +9,7 @@ with open('res/coordinates.json') as file:
     json_str = json.dumps(json_data)
 
 # TCP server IP and port
-server_ip = '192.168.1.196'
+server_ip = '192.168.1.118'
 server_port = 5001
 
 # Create a TCP socket
@@ -28,7 +28,7 @@ try:
         response = sock.recv(1024)  # Adjust the buffer size as needed
         if not response:
             break
-        print("Received response:", response.decode('ascii'))
+        print("Res: ", response.decode('utf-8'))
 
 finally:
     # Close the socket
