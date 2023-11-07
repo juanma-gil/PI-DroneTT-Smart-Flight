@@ -1,3 +1,4 @@
+#pragma once
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
@@ -6,8 +7,9 @@
 #include <WiFi.h>
 #include <Wire.h>
 #include <RMTT_Libs.h>
-#include "../include/Route.h"
-#include "../include/Utils.h"
+#include "Route.h"
+#include "Utils.h"
+#include "ConaeApi.h"
 
 #define PORT 5001
 
@@ -26,8 +28,8 @@
 #define logQueueSIZE 5
 #define logItemSIZE (UBaseType_t)100 * (sizeof(char)) // 100 chars
 
-#define SSID "LCD"
-#define PASSWORD "1cdunc0rd0ba"
+#define SSID "Fibertel WiFi576 2.4GHz"
+#define PASSWORD "00436133012"
 
 /*-------------- Global Variables --------------*/
 

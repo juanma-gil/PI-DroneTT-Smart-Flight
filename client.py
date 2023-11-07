@@ -9,7 +9,7 @@ with open('res/coordinates.json') as file:
     json_str = json.dumps(json_data)
 
 # TCP server IP and port
-server_ip = '192.168.1.118'
+server_ip = '192.168.10.125'
 server_port = 5001
 
 # Create a TCP socket
