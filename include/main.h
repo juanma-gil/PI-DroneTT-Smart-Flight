@@ -8,7 +8,6 @@
 #include <Wire.h>
 #include <RMTT_Libs.h>
 #include "Route.h"
-#include "Utils.h"
 #include "ConaeApi.h"
 
 #define PORT 5001
@@ -28,14 +27,14 @@
 #define logQueueSIZE 5
 #define logItemSIZE (UBaseType_t)100 * (sizeof(char)) // 100 chars
 
-#define SSID "Fibertel WiFi576 2.4GHz"
-#define PASSWORD "00436133012"
+#define SSID "Fibertel WiFi142 2.4GHz"//"Fibertel WiFi576 2.4GHz"
+#define PASSWORD "0141745658"//"00436133012"
 
 /*-------------- Global Variables --------------*/
 
 WiFiServer wifiServer(PORT);
 WiFiClient client;
-
+httpd_handle_t server;
 RMTT_TOF tt_sensor;
 RMTT_Protocol *ttSDK = RMTT_Protocol::getInstance();
 RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
@@ -57,7 +56,6 @@ QueueHandle_t xLogQueue = NULL;
 
 void vMissionTask(void *parameter);
 void vLogTask(void *parameter);
-
 void initialCallback(char *cmd, String res);
 void missionCallback(char *cmd, String res);
 boolean tofSense(std::function<void()> callback);

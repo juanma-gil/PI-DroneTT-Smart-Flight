@@ -1,7 +1,5 @@
 #include "../include/ConaeApi.h"
 
-String response = "";
-
 /* Register the new URI handlers */
 httpd_uri_t uri_path = {
     .uri = "/path",
@@ -38,11 +36,6 @@ httpd_uri_t uri_speed = {
     .method = HTTP_GET,
     .handler = speedHandler,
     .user_ctx = NULL};
-
-void callback(char *cmd, String res)
-{
-    response = res;
-}
 
 /* Function for starting the webserver */
 httpd_handle_t startWebserver(void)
@@ -150,24 +143,25 @@ esp_err_t ledHandler(httpd_req_t *req)
 esp_err_t batteryHandler(httpd_req_t *req)
 {
     RMTT_Protocol *ttSDK = RMTT_Protocol::getInstance();
-    RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
-    Utils *utils = Utils::getInstance();
-    int8_t battery = 0;
+    String cmdRes = "";
+    StaticJsonDocument<100> jsonRes;
 
-    ttSDK->getBattery(callback);
+    ttSDK->getBattery([&cmdRes](char *cmd, String res) { cmdRes = res; });
 
-    if (response.indexOf("error") != -1)
+    if (cmdRes.indexOf("error") != -1)
     {
         httpd_resp_send_500(req);
         return ESP_FAIL;
     }
 
-    char *token = strtok((char *)response.c_str(), " ");
-    token = strtok(nullptr, " ");
+    char *battery = strtok((char *)cmdRes.c_str(), " ");
+    battery = strtok(nullptr, " ");
 
-    utils->slog(token);
+    jsonRes["battery"] = atoi(battery);
+    cmdRes = "";
+    serializeJsonPretty(jsonRes, cmdRes);
 
-    httpd_resp_send(req, token, HTTPD_RESP_USE_STRLEN);
+    httpd_resp_send(req, cmdRes.c_str(), HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
 

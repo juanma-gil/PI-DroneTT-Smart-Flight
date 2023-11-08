@@ -1,5 +1,6 @@
 #pragma once
 #include <RMTT_Libs.h>
+#include <ArduinoJson.h>
 #include "Utils.h"
 #include "esp_http_server.h"
 #define MIN(a, b) ((a) < (b) ? (a) : (b))

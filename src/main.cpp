@@ -44,10 +44,10 @@ void setup()
 	};
 
 	utils->slog("Client connected\n");
-
-	startWebserver();
-
+	server = startWebserver();
 	utils->slog("Webserver started\n");
+	ttSDK->sdkOn();
+
 	// while (routePoints->empty())
 	// {
 	// 	delay(10);
@@ -55,15 +55,14 @@ void setup()
 	// }
 	// client.write("Received JSON");
 	// Serial1.flush();
-	ttSDK->sdkOn();
 
 	/*-------------- Queues --------------*/
 
-	xLogQueue = xQueueCreate(logQueueSIZE, logItemSIZE);
-	if (xLogQueue == NULL)
-	{
-		utils->slog("Queue creation has FAILED");
-	}
+	// xLogQueue = xQueueCreate(logQueueSIZE, logItemSIZE);
+	// if (xLogQueue == NULL)
+	// {
+	// 	utils->slog("Queue creation has FAILED");
+	// }
 
 	/*-------------- Tasks  --------------*/
 
