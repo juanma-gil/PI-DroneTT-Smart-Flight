@@ -146,7 +146,8 @@ esp_err_t batteryHandler(httpd_req_t *req)
     String cmdRes = "";
     StaticJsonDocument<100> jsonRes;
 
-    ttSDK->getBattery([&cmdRes](char *cmd, String res) { cmdRes = res; });
+    ttSDK->getBattery([&cmdRes](char *cmd, String res)
+                      { cmdRes = res; });
 
     if (cmdRes.indexOf("error") != -1)
     {
@@ -168,21 +169,53 @@ esp_err_t batteryHandler(httpd_req_t *req)
 /* Handler for GET /motortime */
 esp_err_t motortimeHandler(httpd_req_t *req)
 {
-    // Implement logic to retrieve motor time information
+    RMTT_Protocol *ttSDK = RMTT_Protocol::getInstance();
+    String cmdRes = "";
+    StaticJsonDocument<100> jsonRes;
 
-    /* Send a response with motor time information */
-    const char motor_time_info[] = "Motor Time Information";
-    httpd_resp_send(req, motor_time_info, HTTPD_RESP_USE_STRLEN);
+    ttSDK->getMotorTime([&cmdRes](char *cmd, String res)
+                        { cmdRes = res; });
+
+    if (cmdRes.indexOf("error") != -1)
+    {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+
+    char *motortime = strtok((char *)cmdRes.c_str(), " ");
+    motortime = strtok(nullptr, " ");
+
+    jsonRes["motortime"] = atoi(motortime);
+    cmdRes = "";
+    serializeJsonPretty(jsonRes, cmdRes);
+
+    httpd_resp_send(req, cmdRes.c_str(), HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
 
 /* Handler for GET /speed */
 esp_err_t speedHandler(httpd_req_t *req)
 {
-    // Implement logic to retrieve speed information
+    RMTT_Protocol *ttSDK = RMTT_Protocol::getInstance();
+    String cmdRes = "";
+    StaticJsonDocument<100> jsonRes;
 
-    /* Send a response with speed information */
-    const char speed_info[] = "Speed Information";
-    httpd_resp_send(req, speed_info, HTTPD_RESP_USE_STRLEN);
+    ttSDK->getSpeed([&cmdRes](char *cmd, String res)
+                    { cmdRes = res; });
+
+    if (cmdRes.indexOf("error") != -1)
+    {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+
+    char *speed = strtok((char *)cmdRes.c_str(), " ");
+    speed = strtok(nullptr, " ");
+
+    jsonRes["speed"] = atoi(speed);
+    cmdRes = "";
+    serializeJsonPretty(jsonRes, cmdRes);
+
+    httpd_resp_send(req, cmdRes.c_str(), HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }

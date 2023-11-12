@@ -58,18 +58,18 @@ void setup()
 
 	/*-------------- Queues --------------*/
 
-	// xLogQueue = xQueueCreate(logQueueSIZE, logItemSIZE);
-	// if (xLogQueue == NULL)
-	// {
-	// 	utils->slog("Queue creation has FAILED");
-	// }
+	xLogQueue = xQueueCreate(logQueueSIZE, logItemSIZE);
+	if (xLogQueue == NULL)
+	{
+		utils->slog("Queue creation has FAILED");
+	}
 
 	/*-------------- Tasks  --------------*/
 
-	// if (xTaskCreatePinnedToCore(vLogTask, "Logger", configMINIMAL_STACK_SIZE * 4, NULL, 5, &loggerTaskHandle, 0) != pdPASS)
-	// {
-	// 	utils->slog("Failed to create Logger task");
-	// }
+	if (xTaskCreatePinnedToCore(vLogTask, "Logger", configMINIMAL_STACK_SIZE * 4, NULL, 5, &loggerTaskHandle, 0) != pdPASS)
+	{
+		utils->slog("Failed to create Logger task");
+	}
 	// if (xTaskCreatePinnedToCore(vMissionTask, "Mission", configMINIMAL_STACK_SIZE * 4, NULL, 20, &missionTaskHandle, 1) != pdPASS)
 	// {
 	// 	utils->slog("Failed to create Mission task");
@@ -114,19 +114,19 @@ void loop()
 // 	}
 // }
 
-// void vLogTask(void *parameter)
-// {
-// 	char msg[500];
-// 	for (;;)
-// 	{
-// 		vTaskDelay(logDELAY);
-// 		if (xQueueReceive(xLogQueue, &msg, logDELAY) == pdTRUE)
-// 		{
-// 			utils->slog(msg);
-// 			client.write(msg);
-// 		}
-// 	}
-// }
+void vLogTask(void *parameter)
+{
+	char msg[500];
+	for (;;)
+	{
+		vTaskDelay(logDELAY);
+		if (xQueueReceive(xLogQueue, &msg, logDELAY) == pdTRUE)
+		{
+			utils->slog(msg);
+			client.write(msg);
+		}
+	}
+}
 
 // boolean tofSense(std::function<void()> callback)
 // {
