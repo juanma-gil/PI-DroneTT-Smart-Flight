@@ -119,24 +119,16 @@ esp_err_t takeoffHandler(httpd_req_t *req)
 /* Handler for POST /led */
 esp_err_t ledHandler(httpd_req_t *req)
 {
-    char content[100];
-    size_t recv_size = MIN(req->content_len, sizeof(content));
-    int ret = httpd_req_recv(req, content, recv_size);
-    if (ret <= 0)
-    {
-        if (ret == HTTPD_SOCK_ERR_TIMEOUT)
-        {
-            httpd_resp_send_408(req);
-        }
-        return ESP_FAIL;
-    }
+    char r[4], g[4], b[4];
+    char *buf;
+    size_t bufLen = httpd_req_get_url_query_len(req) + 1;
 
-    // Process the content and handle the POST request as needed
+    int8_t status = changeLedColor(req, r, g, b, bufLen);
 
-    /* Send a response if necessary */
-    const char resp[] = "POST /led Response";
-    httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
-    return ESP_OK;
+    char res[50] = "";
+    snprintf(res, sizeof(res), "Color changed to: R = %s; G = %s; B = %s", r, g, b);
+    httpd_resp_send(req, res, HTTPD_RESP_USE_STRLEN);
+    return status;
 }
 
 /* Handler for GET /battery */
@@ -217,5 +209,33 @@ esp_err_t speedHandler(httpd_req_t *req)
     serializeJsonPretty(jsonRes, cmdRes);
 
     httpd_resp_send(req, cmdRes.c_str(), HTTPD_RESP_USE_STRLEN);
+    return ESP_OK;
+}
+
+int8_t changeLedColor(httpd_req_t *req, char *r, char *g, char *b, size_t bufLen)
+{
+    if (bufLen > 1)
+    {
+        char *buf = (char *)malloc(bufLen);
+        if (httpd_req_get_url_query_str(req, buf, bufLen) == ESP_OK)
+        {
+            if (httpd_query_key_value(buf, "r", r, sizeof(r)) == ESP_OK &&
+                httpd_query_key_value(buf, "g", g, sizeof(g)) == ESP_OK &&
+                httpd_query_key_value(buf, "b", b, sizeof(b)) == ESP_OK)
+            {
+                RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
+                ttRGB->SetRGB(atoi(r), atoi(g), atoi(b));
+            }
+            else
+            {
+                return ESP_FAIL;
+            }
+        }
+        else
+        {
+            return ESP_FAIL;
+        }
+        free(buf);
+    }
     return ESP_OK;
 }
