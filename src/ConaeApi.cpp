@@ -73,9 +73,10 @@ void stopWebserver(httpd_handle_t server)
 /* Handler for POST /path */
 esp_err_t pathHandler(httpd_req_t *req)
 {
-    char content[100];
-    size_t recv_size = MIN(req->content_len, sizeof(content));
-    int ret = httpd_req_recv(req, content, recv_size);
+    Route *route = Route::getInstance();
+    char body[500];
+    size_t recvSize = MIN(req->content_len, sizeof(body));
+    int ret = httpd_req_recv(req, body, recvSize);
     if (ret <= 0)
     {
         if (ret == HTTPD_SOCK_ERR_TIMEOUT)
@@ -85,34 +86,29 @@ esp_err_t pathHandler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    // Process the content and handle the POST request as needed
+    route->parseJsonAsCoordinate(body);
 
-    /* Send a response if necessary */
-    const char resp[] = "POST /path Response";
-    httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+    const char res[] = "Route received!";
+    httpd_resp_send(req, res, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
 
 /* Handler for POST /takeoff */
 esp_err_t takeoffHandler(httpd_req_t *req)
 {
-    char content[100];
-    size_t recv_size = MIN(req->content_len, sizeof(content));
-    int ret = httpd_req_recv(req, content, recv_size);
-    if (ret <= 0)
+    RMTT_Protocol *ttSDK = RMTT_Protocol::getInstance();
+    String cmdRes = "";
+
+    ttSDK->takeOff([&cmdRes](char *cmd, String res)
+                      { cmdRes = res; });
+
+    if (cmdRes.indexOf("error") != -1)
     {
-        if (ret == HTTPD_SOCK_ERR_TIMEOUT)
-        {
-            httpd_resp_send_408(req);
-        }
+        httpd_resp_send_500(req);
         return ESP_FAIL;
     }
 
-    // Process the content and handle the POST request as needed
-
-    /* Send a response if necessary */
-    const char resp[] = "POST /takeoff Response";
-    httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+    httpd_resp_send(req, cmdRes.c_str(), HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
 
