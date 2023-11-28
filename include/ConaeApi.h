@@ -4,6 +4,9 @@
 #include "Utils.h"
 #include "esp_http_server.h"
 #include "Route.h"
+
+#include <mdns.h>
+
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 httpd_handle_t startWebserver(void);
@@ -15,3 +18,4 @@ esp_err_t batteryHandler(httpd_req_t *req);
 esp_err_t motortimeHandler(httpd_req_t *req);
 esp_err_t speedHandler(httpd_req_t *req);
 int8_t changeLedColor(httpd_req_t *req, char *r, char *g, char *b, size_t bufLen);
+void startmDNSService();

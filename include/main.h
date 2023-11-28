@@ -26,8 +26,8 @@
 #define logQueueSIZE 5
 #define logItemSIZE (UBaseType_t)100 * (sizeof(char)) // 100 chars
 
-#define SSID "Fibertel WiFi142 2.4GHz"//"Fibertel WiFi576 2.4GHz"
-#define PASSWORD "0141745658"//"00436133012"
+#define SSID "LCD"//"Fibertel WiFi576 2.4GHz"
+#define PASSWORD "1cdunc0rd0ba"//"00436133012"
 
 /*-------------- Global Variables --------------*/
 

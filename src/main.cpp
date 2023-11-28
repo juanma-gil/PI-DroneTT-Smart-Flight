@@ -10,7 +10,7 @@ void setup()
 	Serial1.begin(1000000, SERIAL_8N1, 23, 18);
 
 	/* Initialize sensor */
-	Wire.begin(27, 26);
+	/* Wire.begin(27, 26);
 	Wire.setClock(100000);
 	tt_sensor.SetTimeout(500);
 	if (!tt_sensor.Init())
@@ -20,7 +20,7 @@ void setup()
 		{
 			vTaskDelay(pdMS_TO_TICKS(10));
 		}
-	}
+	} */
 
 	/*---------------------------------------------------------*/
 
@@ -37,6 +37,12 @@ void setup()
 	ttRGB->SetRGB(200, 255, 0);
 	wifiServer.begin();
 
+	
+	server = startWebserver();
+	utils->slog("Webserver started");
+	startmDNSService();
+	utils->slog("mDNS service started");
+
 	while (!client)
 	{
 		client = wifiServer.available();
@@ -44,10 +50,10 @@ void setup()
 	};
 
 	utils->slog("Client connected\n");
-	server = startWebserver();
-	utils->slog("Webserver started\n");
-	ttSDK->sdkOn();
-
+	
+	ttSDK->sdkOn(initialCallback);
+	//ttSDK->startUntilControl();
+	utils->slog("SDK started");
 	// while (routePoints->empty())
 	// {
 	// 	delay(10);
@@ -191,12 +197,12 @@ void vLogTask(void *parameter)
 // 	ttRGB->SetRGB(0, 0, 255);
 // }
 
-// void initialCallback(char *cmd, String res)
-// {
-// 	char msg[100];
-// 	snprintf(msg, sizeof(msg), "InitialCallback - cmd: %s, res: %s\n", cmd, res.c_str());
-// 	utils->slog(msg);
-// }
+void initialCallback(char *cmd, String res)
+{
+	char msg[100];
+	snprintf(msg, sizeof(msg), "InitialCallback - cmd: %s, res: %s\n", cmd, res.c_str());
+	utils->slog(msg);
+}
 
 // void missionCallback(char *cmd, String res)
 // {

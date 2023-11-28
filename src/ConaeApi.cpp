@@ -235,3 +235,33 @@ int8_t changeLedColor(httpd_req_t *req, char *r, char *g, char *b, size_t bufLen
     }
     return ESP_OK;
 }
+
+void startmDNSService()
+{
+    // Initialize mDNS service
+    esp_err_t err = mdns_init();
+    if (err) {
+        printf("MDNS Init failed: %d\n", err);
+        return;
+    }
+
+    // Set hostname
+    mdns_hostname_set("paulmccartney");
+    // Set default instance
+    mdns_instance_name_set("Robomaster TT - Paul McCartney");
+
+    // Add HTTP service
+    mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+
+    // Set custom instance name for the web server
+    mdns_service_instance_name_set("_http", "_tcp", "Robomaster TT - Paul McCartney");
+
+    // Set optional TXT data for the HTTP service
+		// es como metadata del servicio, no sé qué tan útil sea
+    /* mdns_txt_item_t serviceTxtData[3] = {
+        {"board", "{esp32}"},
+        {"u", "user"},
+        {"p", "password"}
+    };
+    mdns_service_txt_set("_http", "_tcp", serviceTxtData, 3); */
+}
