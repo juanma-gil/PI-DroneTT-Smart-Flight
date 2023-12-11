@@ -1,4 +1,5 @@
-#pragma once
+#include "ConaeApi.h"
+#include "Utils.h"
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
@@ -7,16 +8,9 @@
 #include <WiFi.h>
 #include <Wire.h>
 #include <RMTT_Libs.h>
-#include "ConaeApi.h"
+#include "Route.h"
 
 #define PORT 5001
-
-/* Measures in cm */
-#define MAX_MEASURE 1000
-#define UP_DODGE 50
-#define DOWN_DODGE 50
-#define LEFT_DODGE 50
-#define RIGHT_DODGE 50
 
 #define missionDELAY (pdMS_TO_TICKS(100))
 #define logDELAY (pdMS_TO_TICKS(500))
@@ -26,21 +20,16 @@
 #define logQueueSIZE 5
 #define logItemSIZE (UBaseType_t)100 * (sizeof(char)) // 100 chars
 
-#define SSID "LCD"//"Fibertel WiFi576 2.4GHz"
-#define PASSWORD "1cdunc0rd0ba"//"00436133012"
+#define SSID "Fibertel WiFi142 2.4GHz" // "LCD" // "Fibertel WiFi576 2.4GHz"
+#define PASSWORD "0141745658"           // "1cdunc0rd0ba" // "00436133012"
 
 /*-------------- Global Variables --------------*/
-
 WiFiServer wifiServer(PORT);
 WiFiClient client;
-httpd_handle_t server;
 RMTT_TOF tt_sensor;
 RMTT_Protocol *ttSDK = RMTT_Protocol::getInstance();
 RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
 Utils *utils = Utils::getInstance();
-
-uint8_t isFirstTime = 1, point_index = 0, tries = 0;
-uint16_t measure = 0;
 
 Route *route = Route::getInstance();
 std::vector<Coordinate> *routePoints;
@@ -53,9 +42,5 @@ QueueHandle_t xLogQueue = NULL;
 
 /*-------------- Fuction Declaration --------------*/
 
-void vMissionTask(void *parameter);
 void vLogTask(void *parameter);
 void initialCallback(char *cmd, String res);
-void missionCallback(char *cmd, String res);
-boolean tofSense(std::function<void()> callback);
-void dodgeFun();

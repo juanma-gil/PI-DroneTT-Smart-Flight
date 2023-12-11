@@ -26,6 +26,14 @@ curl IP_DRON/battery --verbose
 curl IP_DRON/speed --verbose
 ```
 ### POST
+#### /sdkon
+```shell
+curl -X POST "IP_DRON/sdkon" --verbose
+```
+#### /webserver/stop
+```shell
+curl -X POST "IP_DRON/webserver/stop" --verbose
+```
 #### /led
 ```shell
 curl -X POST "IP_DRON/led?r=0&g=0&b=255" --verbose
@@ -34,6 +42,15 @@ curl -X POST "IP_DRON/led?r=0&g=0&b=255" --verbose
 ```shell
 curl -X POST "IP_DRON/takeoff" --verbose
 ```
+#### /land
+```shell
+curl -X POST "IP_DRON/land" --verbose
+```
+#### /motor?on={ON/OFF}
+```shell
+curl -X POST "IP_DRON/motor?on=<X>" --verbose
+```
+
 #### /path
 ```shell
 curl -X POST "IP_DRON/takeoff" -d '{
