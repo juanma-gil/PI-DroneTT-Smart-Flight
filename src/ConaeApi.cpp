@@ -21,6 +21,12 @@ httpd_uri_t uri_path = {
     .handler = pathHandler,
     .user_ctx = NULL};
 
+httpd_uri_t uri_orbit = {
+    .uri = "/orbit",
+    .method = HTTP_POST,
+    .handler = orbitHandler,
+    .user_ctx = NULL};
+
 httpd_uri_t uri_takeoff = {
     .uri = "/takeoff",
     .method = HTTP_POST,
@@ -75,6 +81,7 @@ void startWebserver()
         /* Register URI handlers */
         httpd_register_uri_handler(server, &uri_webserver_stop);
         httpd_register_uri_handler(server, &uri_path);
+        httpd_register_uri_handler(server, &uri_orbit);
         httpd_register_uri_handler(server, &uri_sdkon);
         httpd_register_uri_handler(server, &uri_takeoff);
         httpd_register_uri_handler(server, &uri_land);
@@ -117,11 +124,63 @@ esp_err_t sdkHandler(httpd_req_t *req)
     return ESP_OK;
 }
 
+/* Handler for POST /orbit */
+esp_err_t orbitHandler(httpd_req_t *req)
+{
+    Route *orbit = Route::getInstance();
+    char body[500] = "";
+    size_t recvSize = MIN(req->content_len, sizeof(body));
+    int ret = httpd_req_recv(req, body, recvSize);
+    size_t bufLen = httpd_req_get_url_query_len(req) + 1;
+    char *buf = (char *)malloc(bufLen);
+    char times[5] = "";
+
+    if (ret <= 0)
+    {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT)
+        {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+
+    if (httpd_req_get_url_query_str(req, buf, bufLen) != ESP_OK)
+    {
+        free(buf);
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+
+    if (httpd_query_key_value(buf, "times", times, sizeof(times)) != ESP_OK)
+    {
+        free(buf);
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+
+    orbit->parseJsonAsCoordinate(body);
+
+    Serial.printf("body %s\n", body);
+    Serial.printf("times %s\n", times);
+    Serial.printf("orbit p1x = %d\n", orbit->getRoute()->at(1).getX());
+
+    char *res = "Orbit received!";
+    httpd_resp_send(req, res, HTTPD_RESP_USE_STRLEN);
+
+    if(executeOrbit(req, atoi(times)) != ESP_OK)
+        return ESP_FAIL;
+
+    res = "";
+    res = "Orbit executed!";
+    httpd_resp_send(req, res, HTTPD_RESP_USE_STRLEN);
+    return ESP_OK;
+}
+
 /* Handler for POST /path */
 esp_err_t pathHandler(httpd_req_t *req)
 {
     Route *route = Route::getInstance();
-    char body[500];
+    char body[500] = "";
     size_t recvSize = MIN(req->content_len, sizeof(body));
     int ret = httpd_req_recv(req, body, recvSize);
     if (ret <= 0)
@@ -149,11 +208,8 @@ esp_err_t takeoffHandler(httpd_req_t *req)
     ttSDK->takeOff([&cmdRes](char *cmd, String res)
                    { cmdRes = res; });
 
-    if (cmdRes.indexOf("error") != -1)
-    {
-        httpd_resp_send_500(req);
+    if (checkError(cmdRes, req) != ESP_OK)
         return ESP_FAIL;
-    }
 
     httpd_resp_send(req, cmdRes.c_str(), HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
@@ -168,11 +224,8 @@ esp_err_t landHandler(httpd_req_t *req)
     ttSDK->land([&cmdRes](char *cmd, String res)
                 { cmdRes = res; });
 
-    if (cmdRes.indexOf("error") != -1)
-    {
-        httpd_resp_send_500(req);
+    if (checkError(cmdRes, req) != ESP_OK)
         return ESP_FAIL;
-    }
 
     httpd_resp_send(req, cmdRes.c_str(), HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
@@ -214,11 +267,8 @@ esp_err_t motorHandler(httpd_req_t *req)
 
     free(buf);
 
-    if (cmdRes.indexOf("error") != -1)
-    {
-        httpd_resp_send_500(req);
+    if (checkError(cmdRes, req) != ESP_OK)
         return ESP_FAIL;
-    }
 
     httpd_resp_send(req, cmdRes.c_str(), HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
@@ -249,11 +299,8 @@ esp_err_t batteryHandler(httpd_req_t *req)
     ttSDK->getBattery([&cmdRes](char *cmd, String res)
                       { cmdRes = res; });
 
-    if (cmdRes.indexOf("error") != -1)
-    {
-        httpd_resp_send_500(req);
+    if (checkError(cmdRes, req) != ESP_OK)
         return ESP_FAIL;
-    }
 
     char *battery = strtok((char *)cmdRes.c_str(), " ");
     battery = strtok(nullptr, " ");
@@ -276,11 +323,8 @@ esp_err_t motortimeHandler(httpd_req_t *req)
     ttSDK->getMotorTime([&cmdRes](char *cmd, String res)
                         { cmdRes = res; });
 
-    if (cmdRes.indexOf("error") != -1)
-    {
-        httpd_resp_send_500(req);
+    if (checkError(cmdRes, req) != ESP_OK)
         return ESP_FAIL;
-    }
 
     char *motortime = strtok((char *)cmdRes.c_str(), " ");
     motortime = strtok(nullptr, " ");
@@ -303,11 +347,8 @@ esp_err_t speedHandler(httpd_req_t *req)
     ttSDK->getSpeed([&cmdRes](char *cmd, String res)
                     { cmdRes = res; });
 
-    if (cmdRes.indexOf("error") != -1)
-    {
-        httpd_resp_send_500(req);
+    if(checkError(cmdRes, req) != ESP_OK)
         return ESP_FAIL;
-    }
 
     char *speed = strtok((char *)cmdRes.c_str(), " ");
     speed = strtok(nullptr, " ");
@@ -336,6 +377,49 @@ int8_t changeLedColor(httpd_req_t *req, char *r, char *g, char *b, size_t bufLen
         RMTT_RGB *ttRGB = RMTT_RGB::getInstance();
         ttRGB->SetRGB(atoi(r), atoi(g), atoi(b));
         free(buf);
+    }
+    return ESP_OK;
+}
+
+int8_t executeOrbit(httpd_req_t *req, uint8_t times)
+{
+    std::vector<Coordinate> *orbit = Route::getInstance()->getRoute();
+    RMTT_Protocol *ttSDK = RMTT_Protocol::getInstance();
+    String cmdRes = "";
+    // FixMe: arranca en 1 porque el primer punto es el origen, o sea (0,0,0)
+    Coordinate p1 = orbit->at(1), p2 = orbit->at(2), p3 = orbit->at(3), p4 = orbit->at(4);
+
+    ttSDK->go(p1.getX(), p1.getY(), p1.getZ(), 20, [&cmdRes](char *cmd, String res)
+              { cmdRes = res; }); // TODO: pensar si lo hacemos mover al origen o le damos 0 como primer punto
+    if (checkError(cmdRes, req) != ESP_OK)
+        return ESP_FAIL;
+
+    for (uint8_t i = 0; i < times; i++)
+    {
+        ttSDK->curve(p2.getX(), p2.getY(), p2.getZ(), p3.getX(), p3.getY(), p3.getZ(), 20, [&cmdRes](char *cmd, String res)
+                     { cmdRes = res; });
+        if (checkError(cmdRes, req) != ESP_OK)
+            return ESP_FAIL;
+        
+        ttSDK->curve(p4.getX(), p4.getY(), p4.getZ(), p1.getX(), p1.getY(), p1.getZ(), 20, [&cmdRes](char *cmd, String res)
+                     { cmdRes = res; });
+        if (checkError(cmdRes, req) != ESP_OK)
+            return ESP_FAIL;
+    }
+    ttSDK->stop([&cmdRes](char *cmd, String res)
+                 { cmdRes = res; });
+    if (checkError(cmdRes, req) != ESP_OK)
+        return ESP_FAIL;
+
+    return ESP_OK;
+}
+
+int8_t checkError(String cmdRes, httpd_req_t *req)
+{
+    if (cmdRes.indexOf("error") != -1)
+    {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
     }
     return ESP_OK;
 }

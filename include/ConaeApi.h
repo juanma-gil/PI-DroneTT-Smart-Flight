@@ -15,6 +15,7 @@
 void startWebserver();
 esp_err_t webserverStopHandler(httpd_req_t *req);
 esp_err_t pathHandler(httpd_req_t *req);
+esp_err_t orbitHandler(httpd_req_t *req);
 esp_err_t sdkHandler(httpd_req_t *req);
 esp_err_t takeoffHandler(httpd_req_t *req);
 esp_err_t landHandler(httpd_req_t *req);
@@ -24,4 +25,6 @@ esp_err_t batteryHandler(httpd_req_t *req);
 esp_err_t motortimeHandler(httpd_req_t *req);
 esp_err_t speedHandler(httpd_req_t *req);
 int8_t changeLedColor(httpd_req_t *req, char *r, char *g, char *b, size_t bufLen);
+int8_t executeOrbit(httpd_req_t *req, uint8_t times);
+int8_t checkError(String cmdRes, httpd_req_t *req);
 void startmDNSService();
