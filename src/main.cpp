@@ -42,10 +42,6 @@ void setup()
 	{
 		utils->slog("Failed to create Logger task");
 	}
-	// if (xTaskCreatePinnedToCore(vMissionTask, "Mission", configMINIMAL_STACK_SIZE * 4, NULL, 20, &missionTaskHandle, 1) != pdPASS)
-	// {
-	// 	utils->slog("Failed to create Mission task");
-	// };
 }
 
 void loop()

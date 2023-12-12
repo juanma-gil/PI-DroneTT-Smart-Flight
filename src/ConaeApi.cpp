@@ -1,6 +1,7 @@
 #include "../include/ConaeApi.h"
 
 httpd_handle_t server = NULL;
+httpd_req_t *orbitReq;
 
 /* Register the new URI handlers */
 httpd_uri_t uri_sdkon = {
@@ -79,17 +80,17 @@ void startWebserver()
     if (httpd_start(&server, &config) == ESP_OK)
     {
         /* Register URI handlers */
-        httpd_register_uri_handler(server, &uri_webserver_stop);
-        httpd_register_uri_handler(server, &uri_path);
+        httpd_register_uri_handler(server, &uri_battery);
+        httpd_register_uri_handler(server, &uri_speed);
+        // httpd_register_uri_handler(server, &uri_motortime);
+        // httpd_register_uri_handler(server, &uri_path);
         httpd_register_uri_handler(server, &uri_orbit);
         httpd_register_uri_handler(server, &uri_sdkon);
+        httpd_register_uri_handler(server, &uri_led);
         httpd_register_uri_handler(server, &uri_takeoff);
         httpd_register_uri_handler(server, &uri_land);
+        // httpd_register_uri_handler(server, &uri_webserver_stop);
         httpd_register_uri_handler(server, &uri_motor);
-        httpd_register_uri_handler(server, &uri_battery);
-        httpd_register_uri_handler(server, &uri_led);
-        httpd_register_uri_handler(server, &uri_motortime);
-        httpd_register_uri_handler(server, &uri_speed);
     }
 }
 
@@ -127,11 +128,24 @@ esp_err_t sdkHandler(httpd_req_t *req)
 /* Handler for POST /orbit */
 esp_err_t orbitHandler(httpd_req_t *req)
 {
+    if (xTaskCreatePinnedToCore(vOrbitTask, "Orbit", configMINIMAL_STACK_SIZE * 4, NULL, 20, NULL, 0) != pdPASS)
+    {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    };
+
+    orbitReq = req;
+    httpd_resp_send(req, "OrbitTask queued", HTTPD_RESP_USE_STRLEN);
+    return ESP_OK;
+}
+
+void vOrbitTask(void *parameter)
+{
     Route *orbit = Route::getInstance();
     char body[500] = "";
-    size_t recvSize = MIN(req->content_len, sizeof(body));
-    int ret = httpd_req_recv(req, body, recvSize);
-    size_t bufLen = httpd_req_get_url_query_len(req) + 1;
+    size_t recvSize = MIN(orbitReq->content_len, sizeof(body));
+    int ret = httpd_req_recv(orbitReq, body, recvSize);
+    size_t bufLen = httpd_req_get_url_query_len(orbitReq) + 1;
     char *buf = (char *)malloc(bufLen);
     char times[5] = "";
 
@@ -139,23 +153,23 @@ esp_err_t orbitHandler(httpd_req_t *req)
     {
         if (ret == HTTPD_SOCK_ERR_TIMEOUT)
         {
-            httpd_resp_send_408(req);
+            httpd_resp_send_408(orbitReq);
         }
-        return ESP_FAIL;
+        vTaskDelete(NULL);
     }
 
-    if (httpd_req_get_url_query_str(req, buf, bufLen) != ESP_OK)
+    if (httpd_req_get_url_query_str(orbitReq, buf, bufLen) != ESP_OK)
     {
         free(buf);
-        httpd_resp_send_500(req);
-        return ESP_FAIL;
+        httpd_resp_send_500(orbitReq);
+        vTaskDelete(NULL);
     }
 
     if (httpd_query_key_value(buf, "times", times, sizeof(times)) != ESP_OK)
     {
         free(buf);
-        httpd_resp_send_500(req);
-        return ESP_FAIL;
+        httpd_resp_send_500(orbitReq);
+        vTaskDelete(NULL);
     }
 
     orbit->parseJsonAsCoordinate(body);
@@ -164,16 +178,16 @@ esp_err_t orbitHandler(httpd_req_t *req)
     Serial.printf("times %s\n", times);
     Serial.printf("orbit p1x = %d\n", orbit->getRoute()->at(1).getX());
 
-    char *res = "Orbit received!";
-    httpd_resp_send(req, res, HTTPD_RESP_USE_STRLEN);
+    // char *res = "Orbit received!";
+    // httpd_resp_send(orbitReq, res, HTTPD_RESP_USE_STRLEN);
 
-    if(executeOrbit(req, atoi(times)) != ESP_OK)
-        return ESP_FAIL;
+    if (executeOrbit(orbitReq, atoi(times)) != ESP_OK)
+        vTaskDelete(NULL);
 
-    res = "";
-    res = "Orbit executed!";
-    httpd_resp_send(req, res, HTTPD_RESP_USE_STRLEN);
-    return ESP_OK;
+    // res = "";
+    // res = "Orbit executed!";
+    // httpd_resp_send(orbitReq, res, HTTPD_RESP_USE_STRLEN);
+    vTaskDelete(NULL);
 }
 
 /* Handler for POST /path */
@@ -202,17 +216,30 @@ esp_err_t pathHandler(httpd_req_t *req)
 /* Handler for POST /takeoff */
 esp_err_t takeoffHandler(httpd_req_t *req)
 {
+    if (xTaskCreatePinnedToCore(vTakeoffTask, "Takeoff", configMINIMAL_STACK_SIZE * 4, NULL, 20, NULL, 1) != pdPASS)
+    {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    };
+    httpd_resp_send(req, "TakeOffTask queued", HTTPD_RESP_USE_STRLEN);
+
+    return ESP_OK;
+}
+
+void vTakeoffTask(void *parameter)
+{
     RMTT_Protocol *ttSDK = RMTT_Protocol::getInstance();
     String cmdRes = "";
 
     ttSDK->takeOff([&cmdRes](char *cmd, String res)
                    { cmdRes = res; });
 
-    if (checkError(cmdRes, req) != ESP_OK)
-        return ESP_FAIL;
+    vTaskDelete(NULL);
+    // if (checkError(cmdRes, req) != ESP_OK)
+    //     return ESP_FAIL;
 
-    httpd_resp_send(req, cmdRes.c_str(), HTTPD_RESP_USE_STRLEN);
-    return ESP_OK;
+    // httpd_resp_send(req, cmdRes.c_str(), HTTPD_RESP_USE_STRLEN);
+    // return ESP_OK;
 }
 
 /* Handler for POST /land */
@@ -347,7 +374,7 @@ esp_err_t speedHandler(httpd_req_t *req)
     ttSDK->getSpeed([&cmdRes](char *cmd, String res)
                     { cmdRes = res; });
 
-    if(checkError(cmdRes, req) != ESP_OK)
+    if (checkError(cmdRes, req) != ESP_OK)
         return ESP_FAIL;
 
     char *speed = strtok((char *)cmdRes.c_str(), " ");
@@ -400,14 +427,14 @@ int8_t executeOrbit(httpd_req_t *req, uint8_t times)
                      { cmdRes = res; });
         if (checkError(cmdRes, req) != ESP_OK)
             return ESP_FAIL;
-        
+
         ttSDK->curve(p4.getX(), p4.getY(), p4.getZ(), p1.getX(), p1.getY(), p1.getZ(), 20, [&cmdRes](char *cmd, String res)
                      { cmdRes = res; });
         if (checkError(cmdRes, req) != ESP_OK)
             return ESP_FAIL;
     }
     ttSDK->stop([&cmdRes](char *cmd, String res)
-                 { cmdRes = res; });
+                { cmdRes = res; });
     if (checkError(cmdRes, req) != ESP_OK)
         return ESP_FAIL;
 

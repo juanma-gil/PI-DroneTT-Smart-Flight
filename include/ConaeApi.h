@@ -24,6 +24,8 @@ esp_err_t ledHandler(httpd_req_t *req);
 esp_err_t batteryHandler(httpd_req_t *req);
 esp_err_t motortimeHandler(httpd_req_t *req);
 esp_err_t speedHandler(httpd_req_t *req);
+void vTakeoffTask(void *parameter);
+void vOrbitTask(void *parameter);
 int8_t changeLedColor(httpd_req_t *req, char *r, char *g, char *b, size_t bufLen);
 int8_t executeOrbit(httpd_req_t *req, uint8_t times);
 int8_t checkError(String cmdRes, httpd_req_t *req);
